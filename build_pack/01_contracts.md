@@ -11,7 +11,7 @@ Anything observed or derived. Observation, representation, anchor estimate and s
 ```python
 class Record(BaseModel):
     schema_version: int = 1
-    id: str                              # "rec_" + manifest_hash[:16]
+    id: str                              # "rec_" + sha256(byte_hash + manifest_hash)[:16]
     kind: Literal["observation", "representation", "anchor_estimate", "summary"]
     payload_kind: Literal["array", "structured"]
     payload_ref: str                     # "blobs/<byte_hash>"
@@ -33,7 +33,9 @@ class Record(BaseModel):
 
     processing_history: list[ProcessingStep]   # {op_id, op_version, params, transform_class}
     parents: list[str]                   # record ids; derivation only, never a dependence model
+    produced_by_run: str | None          # provenance; excluded from identity so a replay's output reuses the record
     validation_state: Literal["eligible", "quarantined"]
+    validation_notes: list[str]          # why quarantined, plus advisory notes such as nonfinite:<var>
 
     regime: dict[str, RegimeCoord] | None       # name -> {value, units, provenance, availability, uncertainty}
     anchor: AnchorFields | None          # required when kind == "anchor_estimate"
@@ -64,7 +66,7 @@ class AnchorFields(BaseModel):
     uncertainty_ref: str | None          # run id whose Result.uncertainty applies
 ```
 
-**Identity.** `id` derives from `manifest_hash`. Two records with identical `byte_hash` and different `units` have different ids. Correcting metadata creates a new record with `parents=[old_id]`; the old record is untouched.
+**Identity.** `id` derives from `byte_hash` and `manifest_hash` together (W0 implementation note: deriving it from the manifest alone would collide for two payloads with one manifest). Two records with identical `byte_hash` and different `units` have different ids. `produced_by_run` is provenance, not identity, so a replay that reproduces identical bytes and manifest reuses the existing record. Correcting metadata creates a new record with `parents=[old_id]`; the old record is untouched.
 
 **Quarantine.** `put()` runs pint over every entry in `units` and every `CoordSpec.units`. Any failure, or any array without `units` for a data variable, sets `validation_state="quarantined"`. A quarantined record is stored, listable, and refused by every `assess` with reason `quarantined:<detail>`.
 
@@ -136,7 +138,7 @@ class Operation(Protocol):
     def run(self, task: TaskSpec, record: Record, params: BaseModel, ctx: RunContext) -> Result: ...
 ```
 
-`assess` MUST be pure and fast: it reads the record's `capabilities`, `validation_state`, `units` and the supplied params, and returns. It never opens the payload. `run` receives a `RunContext` with the store, the seed, and a scratch directory; it returns a `Result` and may write output records through `ctx.put()`.
+`assess` MUST be pure and fast: it reads the record's `capabilities`, `validation_state`, `units`, `coords`, `processing_history`, `validation_notes` and the supplied params, and returns. It never opens the payload. Consequently value-level checks (a nonfinite unmasked sample, zero total weight, a negative weight) happen in `run` and produce `answer = unsupported` with reasons in `diagnostics`; the run itself `succeeded`. `run` receives a `RunContext` with the store, the seed, and a scratch directory; it returns a `Result` and may write output records through `ctx.put()`.
 
 **Registry.** `packs.registry()` reads `crossfade.toml`, imports each listed module, checks `CORE_API_VERSION == 1`, and returns `dict[op_id, Operation]`. An import failure or version mismatch fails registry construction with the module named; there is no partial registry.
 

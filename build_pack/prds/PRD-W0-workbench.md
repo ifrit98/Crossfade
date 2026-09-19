@@ -50,6 +50,14 @@ An engineer ingests a supplied delay-power profile, computes its weighted RMS wi
 | W0-F11 | `profile_fixture` returns an anchor estimate of kind `descriptors_only` with no payload | CF-07 |
 | W0-F12 | `cli` exposes ingest, inspect, assess, run, replay, export; each is one function call | — |
 
+## Implementation notes (branch `w0-workbench`)
+
+Three details were settled while implementing and are reflected in `01_contracts.md`:
+
+- AT-04 and AT-05 value checks (unmasked nonfinite, zero total weight, negative weight) are made in `run`, not `assess`, because `assess` never opens the payload. The run succeeds with `answer = unsupported` and the reasons in `diagnostics`. The negative `reference_time` check is a parameter check and stays in `assess`.
+- `Record.id` derives from both hashes; `produced_by_run` and `validation_notes` were added. `verify()` reports `orphan_outputs` for AT-11.
+- The worker runs in-process in this draft. Subprocess isolation with a resource limit is the next increment and does not change any contract.
+
 ## Acceptance tests
 
 Pytest names follow `test_w0_atNN_<slug>`.

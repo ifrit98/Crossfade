@@ -1,0 +1,5 @@
+[store]
+path = "store"
+
+[packs]
+list = ["packs.profile_fixture", "packs.summary_fixture"]
