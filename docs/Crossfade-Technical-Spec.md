@@ -1,8 +1,10 @@
 # Crossfade Technical Spec
 
-*2026-09-18 · Jason · v0.2*
+*2026-09-18 · Jason · v0.3*
 
-Crossfade is a capability-aware evidence and experiment platform for wave-propagation inference. It connects sonar, HF skywave radar and RF systems through a common channel vocabulary anchored on the channel spreading function, and it measures where learned structure transfers instead of assuming it. This is v0.2. It incorporates the architecture review of 2026-09-18 and the referee response to it, and every requirement below is tagged as an engineering guarantee, a provisional choice, or a hypothesis. Questions for the sonar lead are in section 12. The first one, the target quantity for the first real task, is on the critical path.
+Crossfade is a capability-aware evidence and experiment platform for wave-propagation inference. It connects sonar, HF skywave radar and RF systems through a common channel vocabulary anchored on the channel spreading function, and it measures where learned structure transfers instead of assuming it. This is v0.3. It incorporates the architecture review of 2026-09-18, the referee response to it, and the decisions made while writing build pack v0.3, and every requirement below is tagged as an engineering guarantee, a provisional choice, or a hypothesis. Questions for the sonar lead are in section 12. The first one, the target quantity for the first real task, is on the critical path.
+
+**Version history.** v0.1 (2026-09-17): first draft from the synthesis. v0.2 (2026-09-18): adopted the review's contract amendments with three modifications; typed anchor family, per-descriptor regime matching, five record types, four-class transforms, split consistency and content-isolation losses, H2 as a measurement, four build slices. v0.3 (2026-09-18): aligned with build pack v0.3, which is the implementation record for this spec: W1's first generator is an in-house image-source Pekeris waveguide so that truth is the arrival list itself; size budgets enforce the no-framework rule; the twenty-five invariants CF-01 to CF-25 in the pack's contracts document are the test list for the guarantees here.
 
 ---
 
@@ -393,7 +395,7 @@ The review's twelve slices are consolidated to four that ship now and three that
 
 **Why W1 starts now.** The review sequences the contracts against T0 and defers the first real task until a quantity is signed off. Contracts shaped only by a toy get reshaped by the first real task. W1's proposed quantity is chosen so the sonar lead can confirm or replace it in one exchange: RMS delay spread and resolvable-arrival count are functionals of the power-delay profile, have exact truth in simulation, have classical estimators the lead already runs, and sit in the regime groups that plausibly overlap with HF. W0 and W1 are specified together and the contracts grow from both.
 
-**Simulators for W1 and W2.** Acoustic: a normal-mode or ray waveguide model with variable sound-speed profile and bathymetry. HF: an ionospheric ray tracer over a variable electron-density profile. They share no physics kernel and carry a written independence statement per section 10. The regime grid is designed per descriptor so that arrival-structure descriptors have overlapping cells and Doppler descriptors do not.
+**Simulators for W1 and W2.** W1 acoustic: an in-house image-source Pekeris waveguide (isovelocity water column over a fluid half-space), chosen because truth is the arrival list itself, it is a few hundred lines, and it has no license question; its limitation is no refraction, so a normal-mode or ray code the sonar lead already runs is the second generator for W2 and the reality gate. W2 HF: an in-house discrete-mode skywave model over a Chapman-layer ionosphere, with a published ray tracer as the second generator once its license and callable form are verified. The two share no physics kernel and carry a written independence statement per section 10, which must name the one approximation they do share: discrete paths with per-path delay and gain, which is the anchor assumption itself. The regime grid is designed per descriptor so that arrival-structure descriptors have overlapping cells and Doppler descriptors do not.
 
 **Data.** Public ocean-acoustic experiments with known sources and measured environments, and public measured RF channel sets, are the reality-gate candidates. The specific datasets, their fields and their truth are an open question in section 12; no reality claim is scheduled until they are named.
 
@@ -521,8 +523,8 @@ Every paper below was opened and checked on 2026-09-17 or 2026-09-18. Grouped by
 
 **Source documents for this spec**
 
-- `context.md`: transcript of the sonar and ML leads' conversation
-- `plan1.md`: first-principles plan; `plan2.md`: physics-modeling plan; `synthesis.md`: the referee document
-- `review/01_architecture_review.md`, `review/02_contract_amendments.md`: the v0.2 review; `review/03_referee_response.md`: the claim-by-claim response adopted here; `review/04_build_pack_assessment.md`: what was kept, merged and cut from the v0.2 pack
-- `crossfade_build_pack_v0_3/`: the implementation-ready pack this spec is built against: meta-architecture, five contracts, repo layout, evaluation protocol, slices W0 to W3, decision register, data and simulators, four PRDs, templates
-- `crossfade_build_pack_v0_2/`: superseded; retained as the record of the review's proposals
+- `archive/context.md`: transcript of the sonar and ML leads' conversation
+- `archive/plan1.md`: first-principles plan; `archive/plan2.md`: physics-modeling plan; `archive/synthesis.md`: the referee document
+- `archive/review/01_architecture_review.md`, `archive/review/02_contract_amendments.md`: the v0.2 review; `archive/review/03_referee_response.md`: the claim-by-claim response adopted here; `archive/review/04_build_pack_assessment.md`: what was kept, merged and cut from the v0.2 pack
+- `build_pack/`: build pack v0.3, the implementation record this spec is built against: meta-architecture, five contracts, repo layout, evaluation protocol, slices W0 to W3, decision register, data and simulators, four PRDs, templates
+- `archive/crossfade_build_pack_v0_2/`: superseded; retained as the record of the review's proposals

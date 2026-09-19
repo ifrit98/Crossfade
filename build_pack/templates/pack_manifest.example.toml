@@ -1,0 +1,27 @@
+# packs/sonar_sim/manifest.toml
+name = "sonar_sim"
+version = "0.1.0"
+core_api_version = 1
+operations = ["beamform_stft", "autocorr_pdp", "cepstral_pdp", "direct_from_truth"]
+fixtures = ["fixtures/golden_scene.zarr", "fixtures/golden_answers.json"]
+data_use_default = "research-simulated"
+
+[regime]
+# placeholder ranges until the sonar lead supplies program values
+M      = {low = 1e-3, high = 1e-2, status = "placeholder"}
+beta_B = {low = 0.3,  high = 1.0,  status = "placeholder"}
+Pi_tau = {low = 10,   high = 1000, status = "placeholder"}
+Pi_f   = {low = 1,    high = 50,   status = "placeholder"}
+
+[canonical_kind]
+# chosen by sparsity; threshold is pack-declared and tested, never core logic
+rule = "delay_scale if TB_over_c_ratio > threshold else delay_doppler"
+threshold = 0.1
+test = "tests/test_canonical_kind_threshold.py"
+
+[[transforms]]
+op = "beamform_stft"
+class = "lossy"
+params = ["window_s", "overlap"]
+test = "tests/test_transform_window.py"
+retained = "rms_delay_spread within 0.2 resolution cells across window_s in [0.5, 2.0] s on golden scene"

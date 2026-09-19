@@ -1,0 +1,56 @@
+# tasks/pdp.rms_delay_spread.v0.1.yaml
+schema_version: 1
+task_id: pdp.rms_delay_spread
+version: "0.1"
+task_kind: estimation
+question: >
+  What is the RMS delay spread of the propagation channel, as a functional of the
+  power-delay profile, given a beam time series and its acquisition metadata?
+
+allowed_inputs:
+  - {name: beam_timeseries, availability: prediction_evidence}
+  - {name: fs, availability: prediction_metadata}
+  - {name: band, availability: prediction_metadata}
+  - {name: array_geometry, availability: prediction_metadata}
+  - {name: local_sound_speed, availability: prediction_metadata}
+  - {name: arrival_list, availability: evaluation_only}
+  - {name: sim_params, availability: training_only}
+
+required_capabilities: [has_timing, has_phase]
+
+params:
+  window_s: {type: float, units: s, required: true, is_assumption: false, description: STFT window, lossy}
+  cepstral_lifter: {type: float, units: s, required: false, is_assumption: false}
+  assume_point_source: {type: bool, required: true, is_assumption: true, description: source is spatially compact}
+
+quantities:
+  rms_delay_spread:
+    definition: sqrt of the weighted variance of delay under the normalized PDP
+    units: s
+    canonical_kind: power_statistic
+    ambiguity_allowed: false
+
+truth_source:
+  kind: exact
+  description: functional of the simulator arrival list
+  error_model: none
+
+normalization: {rule: none, reversible: true, fit_scope: train}
+
+regime_coords:
+  - {name: Pi_tau, availability: inference}
+  - {name: Pi_f, availability: inference}
+  - {name: SNR_cell, availability: inference}
+
+baselines: [direct_from_truth, autocorr_pdp, cepstral_pdp]
+
+metrics:
+  - {name: abs_error_cells, direction: lower, units: "1", independent_unit: scene}
+  - {name: coverage_90, direction: target_0.9, units: "1", independent_unit: scene}
+
+split_policy: {unit: scene, held_out_groups: [scene, environment], pretraining_exposure: none}
+
+uncertainty_requirement: {kinds_accepted: [ensemble_summary, predictive_interval], may_be_unavailable: false}
+
+completion_rule: valid report over all planned cells with every listed baseline
+promotion_rule: not applicable in W1

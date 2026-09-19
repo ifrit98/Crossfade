@@ -1,0 +1,24 @@
+{
+  "review_date": "2026-09-17",
+  "status": "source files unchanged",
+  "files": [
+    {
+      "role": "technical_spec",
+      "filename": "Untitled.md",
+      "bytes": 47701,
+      "sha256": "99e1ae4709ea1abf00a524288adb09e5c991b89a5cf59a16b8992d8f5d1a5121"
+    },
+    {
+      "role": "synthesis",
+      "filename": "synthesis.md",
+      "bytes": 37760,
+      "sha256": "a51f181e77b9ac55231ac2d610be668770af08b56f4a3f25157b09522ee3a1c5"
+    },
+    {
+      "role": "conversation_transcript",
+      "filename": "Pasted text(20260917-205110).txt",
+      "bytes": 27677,
+      "sha256": "0f01c5acb8533d66296f67983f9ab60d63309efe276d90db3f751394fc40da3f"
+    }
+  ]
+}
