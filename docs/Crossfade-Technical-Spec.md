@@ -53,7 +53,7 @@ Matz, Bölcskei and Hlawatsch (2013) state that virtually any linear channel can
 y(t) = ∫∫ h(τ, α) √α · x(α(t − τ)) dτ dα
 ```
 
-Altes (1971) and the Mellin-transform literature give the tools for the scale case. Both representations are always valid; one is parsimonious.
+Altes (1973) and the Mellin-transform literature give the tools for the scale case. Both representations are always valid; one is parsimonious.
 
 **Realization versus statistic.** `S_H` describes one channel realization. Under WSSUS the second-order statistic is the scattering function `C_H(τ, ν) = E|S_H|²`, and the power-delay profile is its marginal in `τ`. These are different objects and every `AnchorEstimate` says which one it holds.
 
@@ -460,7 +460,7 @@ Every paper below was opened and checked on 2026-09-17 or 2026-09-18. Grouped by
 
 - Matz, Bölcskei, Hlawatsch, [Time-Frequency Foundations of Communications: Concepts and Tools](https://arxiv.org/abs/1307.4790), IEEE SPM (2013). States that virtually any linear channel is a superposition of time-frequency shifts, with scaling more parsimonious in the wideband regime; distinguishes the spreading function from the scattering function
 - Matz and Hlawatsch, [Fundamentals of Time-Varying Communication Channels](https://booksite.elsevier.com/samplechapters/9780123744838/9780123744838.pdf) (2011)
-- Altes, [Some invariance properties of the wide-band ambiguity function](http://www.norbertwiener.umd.edu/crowds/documents/Altes71a.pdf) (1971); [Time-scale domain characterization of non-WSSUS wideband channels](https://link.springer.com/article/10.1186/1687-6180-2011-123) (2011)
+- Altes, [Some invariance properties of the wide-band ambiguity function](http://www.norbertwiener.umd.edu/crowds/documents/Altes71a.pdf), JASA 1973; Chude-Okonkwo, Ngah and Abd Rahman, [Time-scale domain characterization of non-WSSUS wideband channels](https://link.springer.com/article/10.1186/1687-6180-2011-123), EURASIP JASP 2011
 - Jiang, Yu, Li, Gao, Xu, [CSI-CLIP++: A Scalable Channel Foundation Model via CIR-CSI Consistency](https://arxiv.org/abs/2606.25714) (2026). Perfect ray-traced CSI from DeepMIMO, CIR by IFFT, SNR-dependent noise not considered
 - Girdhar et al., [ImageBind: One Embedding Space To Bind Them All](https://arxiv.org/abs/2305.05665), CVPR 2023
 
@@ -486,7 +486,7 @@ Every paper below was opened and checked on 2026-09-17 or 2026-09-18. Grouped by
 
 **Physics-structured priors and blind channel estimation**
 
-- Sabra and Dowling, [Blind deconvolution in ocean waveguides using artificial time reversal](https://pubs.aip.org/asa/jasa/article-abstract/116/1/262/541692/), JASA 2004; [Ray-based blind deconvolution in ocean sound channels](https://doi.org/10.1121/1.3284548), JASA 2010; [Blind deconvolution of sources of opportunity using bilinear channel models](https://pubmed.ncbi.nlm.nih.gov/33138520/), JASA 2020
+- Sabra and Dowling, [Blind deconvolution in ocean waveguides using artificial time reversal](https://pubs.aip.org/asa/jasa/article-abstract/116/1/262/541692/), JASA 2004; Sabra, Song and Dowling, [Ray-based blind deconvolution in ocean sound channels](https://doi.org/10.1121/1.3284548), JASA 2010; Tian, Lee, Romberg, Durofchalk and Sabra, [Blind deconvolution of sources of opportunity in ocean waveguides using bilinear channel models](https://pubmed.ncbi.nlm.nih.gov/33138520/), JASA 2020
 - Zubow et al., [Physics-Informed Transformer for Multi-Band Channel Frequency Response Reconstruction](https://arxiv.org/abs/2604.01944) (2026)
 - Rouseff and Zurk, [Striation-based beamforming for estimating the waveguide invariant](https://pubs.aip.org/asa/jasa/article/130/2/EL76/957680/), JASA 2011; [Waveguide Invariant-Based Range Estimation in Shallow Water](https://arxiv.org/html/2412.02201v1) (2024); Cockrell and Schmidt, [Robust passive range estimation using the waveguide invariant](https://acoustics.mit.edu/faculty/henrik/LAMSS/Pubs/cockrell_schmidt_jasa_127_p2780-2789_2010.pdf), JASA 2010
 - [Mitigation of multi-path propagation artefacts with adaptive cepstral filtering](https://arxiv.org/pdf/2512.11165) (2025); [Toeplitz-based blind deconvolution of underwater acoustic channels](https://www.sciencedirect.com/science/article/abs/pii/S016516842030356X)

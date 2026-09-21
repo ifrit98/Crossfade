@@ -1,0 +1,492 @@
+% math-core.tex — the mathematics of Crossfade. Included by both
+% crossfade-math.tex and crossfade-full.tex. Section numbering comes from
+% the including document.
+
+\section{Notation and conventions}
+\label{sec:notation}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Symbol & Meaning & Units \\
+\midrule
+$x(t),\,y(t)$ & transmitted and received signal (complex baseband unless stated) & -- \\
+$s(t)$ & source waveform; $s_a(t)$ its analytic signal & -- \\
+$h(t,\tau)$ & time-varying impulse response (Bello) & s$^{-1}$ \\
+$\SH(\tau,\nu)$ & delay--Doppler spreading function & -- \\
+$\hW(\tau,\alpha)$ & delay--scale spreading function & -- \\
+$\CH(\tau,\nu)$ & scattering function, $\E|\SH|^2$ under WSSUS & -- \\
+$P(\tau)$ & power--delay profile (PDP) & -- \\
+$f_c,\,B,\,T$ & carrier, bandwidth, observation length & Hz, Hz, s \\
+$c$ & propagation speed in the medium & m/s \\
+$v$ & radial relative speed, positive when closing & m/s \\
+$M=v/c$ & Mach number & 1 \\
+$\betaB=B/f_c$ & fractional bandwidth & 1 \\
+$\rms,\,\dspread$ & RMS delay spread, RMS Doppler spread & s, Hz \\
+$\Pit,\Pin,\PiL,\Pif,\Pih,\Pis$ & regime groups, Section~\ref{sec:regime} & 1 \\
+$\{(\tau_k,a_k)\}_{k=1}^{K}$ & arrival list: delays and complex gains & s, 1 \\
+$D,\,z_s,\,z_r,\,r$ & water depth, source depth, receiver depth, range & m \\
+$\cbot,\rhob$ & bottom half-space sound speed and density & m/s, kg/m$^3$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Fourier transform convention: $X(f)=\int x(t)\,\ee^{-\jj 2\pi f t}\dd t$. Scale $\alpha>1$ means time compression (a closing source). Every equation is tagged: \tagG{} for something the software enforces, \tagP{} for a convention or modelling choice that can be swapped without changing a contract, \tagH{} for a scientific claim the benchmark measures. Items marked \emph{Check} are the ones we most want the reader to confirm, correct, or replace.
+
+% ---------------------------------------------------------------------------
+\section{The channel and its representations}
+\label{sec:channel}
+
+\subsection{Linear time-varying channel}
+
+A single-input single-output propagation channel is modelled as a linear time-varying (LTV) operator $\mathcal H$ with kernel $h(t,\tau)$ \citep{bello1963}:
+\begin{equation}
+  y(t) = (\mathcal H x)(t) = \int h(t,\tau)\, x(t-\tau)\dd\tau .
+  \label{eq:ltv}
+\end{equation}
+$h(t,\tau)$ is the response at time $t$ to an impulse launched at time $t-\tau$. Its Fourier transform in $t$ is the \emph{delay--Doppler spreading function},
+\begin{equation}
+  \SH(\tau,\nu) = \int h(t,\tau)\,\ee^{-\jj 2\pi \nu t}\dd t,
+  \qquad
+  y(t) = \iint \SH(\tau,\nu)\, x(t-\tau)\,\ee^{\jj 2\pi\nu t}\dd\tau\dd\nu ,
+  \label{eq:dd}
+\end{equation}
+so the channel is a superposition of delay-and-frequency-shift operators. The other two Bello functions follow by Fourier transform in $\tau$: the time-varying transfer function $L_{\mathrm H}(t,f)=\int h(t,\tau)\ee^{-\jj 2\pi f\tau}\dd\tau$ and the Doppler-variant transfer function.
+
+\begin{proposition}[Existence]
+\label{prop:existence}
+Equation~\eqref{eq:dd} holds for any LTV operator whose kernel $h(t,\tau)$ is a tempered distribution in $t$; the delay--Doppler representation is not a narrowband approximation but a change of coordinates on the kernel \citep{matz2013}.
+\end{proposition}
+\noindent This is the correction made to v0.1 of the spec, which had called delay--Doppler ``the narrowband form''. What depends on the regime is not existence but \emph{sparsity} (Proposition~\ref{prop:rangewalk}).
+
+\subsection[Delay--scale (wideband) representation]{Delay--scale (wideband) representation\hfill{\normalfont\small \tagP{}}}
+
+The same operator can be written as a superposition of delay-and-scale operators,
+\begin{equation}
+  y(t) = \iint \hW(\tau,\alpha)\,\sqrt{\alpha}\; x\big(\alpha (t-\tau)\big)\dd\tau\dd\alpha ,
+  \qquad \alpha>0,
+  \label{eq:ds}
+\end{equation}
+where $\hW$ is the delay--scale (wideband) spreading function \citep{altes1973,chude2011}. A single reflector with radial closing speed $v$ produces, in passband,
+\begin{equation}
+  \alpha = \frac{c+v}{c-v}\approx 1+\frac{2v}{c} \ \text{(monostatic, two-way)},\qquad
+  \alpha = 1+\frac{v}{c} \ \text{(one-way, passive)} .
+  \label{eq:alpha}
+\end{equation}
+Two conventions are pack-declared and recorded in the anchor's \code{normalization} field rather than fixed by the core: the $\sqrt{\alpha}$ energy normalization, and whether the scaling is written $x(\alpha(t-\tau))$ as above or $x(\alpha t-\tau)$, which differ by $\tau\mapsto\alpha\tau$.
+
+\subsection{When is one representation sparse? The range-walk number}
+
+Consider one path with delay $\tau_0$ and scale $\alpha_0$, observed over $t\in[0,T]$, acting on a passband signal $x(t)=u(t)\ee^{\jj2\pi f_c t}$ with envelope bandwidth $B$. In baseband the path is the operator
+\begin{equation}
+  u \mapsto \sqrt{\alpha_0}\;u\big(\alpha_0(t-\tau_0)\big)\,\ee^{\jj 2\pi \nu_0 t}\,\ee^{-\jj 2\pi f_c\alpha_0\tau_0},
+  \qquad \nu_0 = (\alpha_0-1) f_c ,
+  \label{eq:pathop}
+\end{equation}
+whose Bello kernel is $h(t,\tau)=\sqrt{\alpha_0}\,\ee^{\jj2\pi\nu_0 t}\ee^{-\jj2\pi f_c\alpha_0\tau_0}\,\delta\big(\tau-\tau(t)\big)$ with the \emph{drifting delay}
+\begin{equation}
+  \tau(t) = \alpha_0\tau_0 + (1-\alpha_0)\,t .
+  \label{eq:drift}
+\end{equation}
+
+\begin{proposition}[Range walk]
+\label{prop:rangewalk}
+Let $g$ be the delay-resolution kernel of the waveform (width $1/B$) and $\tilde h = h *_\tau g$ the resolution-limited kernel. Over an observation of length $T$, the resolution-limited spreading function $\tilde S_{\mathrm H}(\tau,\nu)$ of the single path~\eqref{eq:pathop} has support of extent
+\begin{equation}
+  \Delta\tau \approx \max\!\Big(\tfrac{1}{B},\,|\alpha_0-1|\,T\Big),
+  \qquad
+  \Delta\nu \approx \max\!\Big(\tfrac{1}{T},\,|\alpha_0-1|\,B\Big),
+\end{equation}
+that is, about $\max(1,\Pis)$ resolution cells along each axis, where
+\begin{equation}
+  \boxed{\;\Pis \;=\; T\,B\,|\alpha_0-1| \;=\; T B\,M \ \ \text{(one-way)}\;}
+  \label{eq:Pis}
+\end{equation}
+is the range-walk number. In the delay--scale plane the same path is a single point $(\tau_0,\alpha_0)$ at the resolution of the wideband ambiguity function.
+\end{proposition}
+
+\begin{proof}[Sketch]
+Write $\tilde h(t,\tau)=\sqrt{\alpha_0}\,\ee^{\jj2\pi\nu_0 t}\,g\big(\tau-\tau(t)\big)$ up to a constant phase. Substituting $s=\tau-\tau(t)$ in the Fourier integral over $t\in[0,T]$,
+\[
+  \tilde S_{\mathrm H}(\tau,\nu)
+  = \frac{\sqrt{\alpha_0}}{\alpha_0-1}\,\ee^{-\jj 2\pi(\nu-\nu_0)\,t^\ast(\tau)}\;
+    G\!\left(\frac{\nu-\nu_0}{\alpha_0-1}\right)\!\Big|_{s\in\text{window}},
+  \qquad t^\ast(\tau)=\frac{\tau-\alpha_0\tau_0}{1-\alpha_0},
+\]
+where $G$ is the transform of $g$ and has width $B$. The delay support is the set of $\tau$ for which $t^\ast(\tau)\in[0,T]$, of length $|\alpha_0-1|T$; the Doppler support is where $G$ is non-negligible, of width $|\alpha_0-1|B$. When either is below one resolution cell the window and kernel widths take over.
+\end{proof}
+
+\begin{remark}
+Equation~\eqref{eq:Pis} is the Kelly--Wishner narrowband condition $TB\,(2v/c)\ll1$ for the monostatic case \citep{kelly1965}, written as a dimensionless group. In the regime coordinates of Section~\ref{sec:regime}, $\Pis = M\cdot TB = M\,\betaB\,(f_cT)$. It is a property of the waveform and the motion jointly, so the threshold $\theta$ at which a pack switches canonical kind from \code{delay\_doppler} to \code{delay\_scale} is declared and tested by the pack, per regime box, and is not core logic.
+\end{remark}
+
+\begin{question}
+Is $\Pis=TB|\alpha-1|$ the quantity you would use to decide between delay--Doppler and delay--scale processing, and is a threshold of order one (we have used $\theta\approx0.1$ as a placeholder) the right order? For the passive wideband sonar case, is there structure in the modal picture that the delay--scale form loses at ranges you care about?
+\end{question}
+
+\subsection[Realization versus statistic]{Realization versus statistic\hfill{\normalfont\small \tagG{} for the field, \tagP{} for WSSUS}}
+
+$\SH$ describes one channel realization. If the channel is wide-sense stationary in $t$ with uncorrelated scattering in $\tau$ (WSSUS), then
+\begin{equation}
+  \E\big[\SH(\tau,\nu)\,\SH^\ast(\tau',\nu')\big] = \CH(\tau,\nu)\,\delta(\tau-\tau')\,\delta(\nu-\nu'),
+  \label{eq:wssus}
+\end{equation}
+and $\CH$ is the \emph{scattering function}. Its marginals are the power--delay profile and the Doppler power profile,
+\begin{equation}
+  P(\tau)=\int \CH(\tau,\nu)\dd\nu, \qquad P_\nu(\nu)=\int \CH(\tau,\nu)\dd\tau .
+  \label{eq:pdp}
+\end{equation}
+For a single realization the time-averaged delay profile is $\hat P_T(\tau)=\frac1T\int_0^T|h(t,\tau)|^2\dd t$, which converges to $P$ under WSSUS and ergodicity. The wideband analogue replaces $(\tau,\nu)$ with $(\tau,\alpha)$ \citep{chude2011}. Every anchor record states which of these it holds through \code{statistical\_semantics} $\in\{$\code{realization}, \code{expectation}, \code{estimate}, \code{posterior\_samples}, \code{pseudo\_label}$\}$, and WSSUS, when an operation needs it, is a declared parameter \code{assume\_wssus}, never a default.
+
+\begin{question}
+Are there operational cases where you would want a \emph{local} scattering function (non-WSSUS, per \citealp{matz2011}) as a first-class kind, rather than a realization plus a time-series of PDPs?
+\end{question}
+
+% ---------------------------------------------------------------------------
+\section{Descriptors as functionals of a named representation}
+\label{sec:descriptors}
+
+The anchor is a vocabulary, not a required payload: every quantity Crossfade estimates is defined as a functional of a \emph{named} channel representation. In the contracts this is one string per quantity, \code{canonical\_kind}, taking one of the values \code{impulse\_response}, \code{delay\_doppler}, \code{delay\_scale}, \code{power\_statistic} or \code{descriptors\_only}, or else the tag \code{not\_channel}. \tagG{} that the string exists; \tagP{} the list.
+
+\subsection{Moments of the power--delay profile}
+
+\begin{definition}[Delay moments]
+For a non-negative profile $P$ with $0<\int P<\infty$,
+\begin{equation}
+  \bar\tau = \frac{\int \tau P(\tau)\dd\tau}{\int P(\tau)\dd\tau},\qquad
+  \rms^2 = \frac{\int (\tau-\bar\tau)^2 P(\tau)\dd\tau}{\int P(\tau)\dd\tau}.
+  \label{eq:moments}
+\end{equation}
+For a discrete profile $\{(\tau_k, E_k)\}$ with weights $w_k=E_k/\sum_j E_j$: $\bar\tau=\sum_k w_k\tau_k$, $\rms^2=\sum_k w_k(\tau_k-\bar\tau)^2$.
+\end{definition}
+The Doppler spread $\dspread$ is the same functional of $P_\nu$. Coherence bandwidth and coherence time are of order $1/\rms$ and $1/\dspread$; the constant depends on the correlation level chosen and is a declared convention, not a physical fact.
+
+\begin{definition}[Resolvable-arrival count] \tagP{}
+Given a delay resolution $\Delta$ and a relative threshold $\gamma\in(0,1)$, cluster the arrivals of a discrete profile greedily in delay order, merging any arrival within $\Delta$ of the current cluster; let $E_j$ be cluster energies. Then
+\begin{equation}
+  \Narr(\Delta,\gamma) = \#\{\,j : E_j \ge \gamma \max_i E_i\,\}.
+  \label{eq:narr}
+\end{equation}
+\end{definition}
+$\Narr$ depends on $(\Delta,\gamma)$ and on the merging rule; two different rules are two different quantities, so the rule is recorded under \code{assumptions\_used} and arrivals inside one cell are listed under \code{ambiguous}, never silently merged into a point estimate.
+
+\subsection{Exact descriptors from an arrival list}
+
+For a time-invariant channel given as an arrival list, $h(\tau)=\sum_k a_k\,\delta(\tau-\tau_k)$, the profile is $P(\tau)=\sum_k |a_k|^2\delta(\tau-\tau_k)$ and~\eqref{eq:moments} is exact with $E_k=|a_k|^2$. This is why W1's simulator produces an arrival list: truth is the functional itself, not a second estimate.
+
+\begin{proposition}[Delay spread from pairwise differences]
+\label{prop:pairwise}
+With $w_k=|a_k|^2/\sum_j|a_j|^2$,
+\begin{equation}
+  \rms^2 = \tfrac12 \sum_{k,l} w_k w_l\,(\tau_k-\tau_l)^2 .
+  \label{eq:pairwise}
+\end{equation}
+Hence $\rms$ is invariant to a common delay shift and is determined by the \emph{delay-difference profile} $Q(\tau)=\sum_{k,l}|a_k|^2|a_l|^2\,\delta\big(\tau-(\tau_k-\tau_l)\big)$ through $\rms^2 = \tfrac12\int\tau^2Q/\int Q$.
+\end{proposition}
+\begin{proof}
+Expand $\tfrac12\sum_{k,l}w_kw_l(\tau_k-\tau_l)^2=\sum_k w_k\tau_k^2-\big(\sum_k w_k\tau_k\big)^2$ using $\sum_k w_k=1$.
+\end{proof}
+
+\begin{remark}[Why this matters for a passive receiver]
+A receiver that does not know the source sees $y=s*h$ and can form the autocorrelation $R_{yy}(\tau)=\sum_{k,l}a_ka_l^\ast R_{ss}\big(\tau-(\tau_k-\tau_l)\big)$. Its peaks sit at pairwise delay differences with weights $a_ka_l^\ast$, whose squared magnitudes are $|a_k|^2|a_l|^2$, exactly the weights of $Q$. So an autocorrelation-based estimator can recover $\rms$ without the absolute delay, \emph{provided} the pairwise differences are resolved ($|\tau_k-\tau_l|>1/B$ for $k\neq l$) and $R_{ss}$ is narrow relative to them. When differences collide, the estimator is biased; W1 measures that bias against the exact value rather than assuming it away. The absolute delay $\bar\tau$ is not recoverable without a source reference, which is the delay ambiguity of Section~\ref{sec:ident}.
+\end{remark}
+
+\begin{question}
+Do you agree that RMS delay spread (via the difference profile) and resolvable-arrival count (with a declared merging rule) are the right first two descriptors, and that they are what your cepstral and autocorrelation processing already estimate? If you would replace them, which functional of $P$ or $\CH$, and why?
+\end{question}
+
+\subsection{The T0 fixture, stated}
+
+The W0 workbench's only computation is~\eqref{eq:moments} on a supplied point-weight profile, plus a normalized width $\rms/t_{\mathrm{ref}}$. Golden case: delays $\{0,2\}$~ms, weights $\{1,1\}$, $t_{\mathrm{ref}}=2$~ms gives $\bar\tau=1$~ms, $\rms=1$~ms, normalized width $0.5$. It exists to exercise units, lineage, replay and refusal, not to estimate anything.
+
+% ---------------------------------------------------------------------------
+\section{Regime coordinates}
+\label{sec:regime}
+
+A regime coordinate is a dimensionless group that a task names as a candidate explanatory variable for a specific descriptor. The fields are \tagG{}; whether any group predicts anything is \tagH{}.
+
+\subsection[Candidate groups]{Candidate groups\hfill{\normalfont\small \tagP{}}}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llp{6cm}l@{}}
+\toprule
+Group & Definition & Governs & Placeholders (sonar; HF) \\
+\midrule
+$M$ & $v/c$ & Doppler as shift vs.\ scale & $10^{-3}$--$10^{-2}$; $10^{-6}$--$10^{-5}$ \\
+$\betaB$ & $B/f_c$ & sparsity with $M$, $TB$, eq.~\eqref{eq:Pis} & $0.3$--$1$; $10^{-3}$--$10^{-2}$ \\
+$\Pit$ & $\rms B$ & delay spread in resolution cells & $10$--$10^3$; $1$--$50$ \\
+$\Pin$ & $\dspread T$ & Doppler spread in Doppler cells & $0.1$--$10$; $0.1$--$10$ \\
+$\PiL$ & $L/\lambda$ & aperture in wavelengths & $10$--$100$; $10$--$300$ \\
+$\Pif$ & $f/f_{\mathrm{cut}}$ & propagating-mode count, eq.~\eqref{eq:modecount} & $1$--$50$; $1$--$10$ \\
+$\Pih$ & $k\,h_{\mathrm{rms}}\sin\theta$ & coherent vs.\ diffuse boundary scatter & $0.1$--$10$; $0.1$--$5$ \\
+$\mathrm{SNR}_{\mathrm{cell}}$ & per-resolution-cell SNR & detection-limited estimation & $-20$--$0$~dB; $0$--$30$~dB \\
+\bottomrule
+\end{tabular}
+\end{center}
+Ranges are placeholders to be replaced by programme values. Some authors define the Rayleigh roughness parameter with a factor $2$; the pack declares which.
+
+\subsection{The window question, made dimensionless}
+
+The transcript's practical question, what FFT length and window to use for HF versus sonar, has one answer in both domains. For a short-time transform of window length $T_w$ over a total observation $T$: arrivals separated by less than $1/B$ are not resolved, so the delay structure available to any estimator has $\Pit$ cells; the window must be short against the coherence time, $\dspread T_w\lesssim\varepsilon$, while the Doppler structure resolvable over the whole observation has $\Pin$ cells. Window length follows $\Pin$; resolution follows $\Pit$. It is the same decision in both domains once written this way.
+
+\subsection[Per-descriptor governing sets and overlap]{Per-descriptor governing sets and overlap\hfill{\normalfont\small \tagP{} for the metric, \tagH{} for the matching claim}}
+
+Each descriptor $q$ names a governing set $G_q$ of groups. A dataset's tested support $C_d(q)$ is a finite set of cells in $\log_{10}$-coordinates over $G_q$. Define
+\begin{equation}
+  O_q = C_{\mathrm{src}}(q)\cap C_{\mathrm{tgt}}(q),
+  \qquad
+  d_q(c, C_{\mathrm{src}}) = \min_{c'\in C_{\mathrm{src}}(q)}\ \max_{g\in G_q}\ \big|\log_{10}\pi_g(c)-\log_{10}\pi_g(c')\big| ,
+  \label{eq:overlap}
+\end{equation}
+so $d_q$ is the number of decades a target cell sits from the nearest source cell in the worst governing group. The tested support is the list of evaluated cells, never a bounding box \tagG{}.
+
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Descriptor & $G_q$ & Sonar--HF overlap under placeholders \\
+\midrule
+RMS delay spread, arrival count & $\{\Pit,\Pif,\mathrm{SNR}_{\mathrm{cell}}\}$ & partial \\
+Interference structure, striation slope & $\{\Pif,\PiL,\Pit\}$ & partial \\
+Scale or Doppler spread & $\{M,\betaB,\Pin\}$ & none in $M$, $\betaB$ \\
+Boundary scatter character & $\{\Pih\}$ & partial \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{proposition}[The overlap result]
+\label{prop:overlap}
+Under the placeholder ranges, the sonar and HF intervals for $M$ are separated by at least two decades and those for $\betaB$ by at least $1.5$ decades. Hence for any descriptor with $M\in G_q$ or $\betaB\in G_q$, $O_q=\varnothing$ and $d_q\ge1.5$ for every target cell.
+\end{proposition}
+\begin{corollary}[Predicted negative control] \tagH{}
+If structure transfers only where governing groups overlap, Doppler and scale descriptors are predicted not to transfer between sonar and HF, and whatever transfers lives in $\{\Pit,\Pin,\Pif,\PiL\}$: arrival structure and waveguide interference. This is the transcript's ``ionosphere as the ocean flipped upside down'' stated precisely: the shared object is the waveguide, not the Doppler. A measured gain on a Doppler descriptor would be a finding, not a failed gate.
+\end{corollary}
+
+\subsection{The mode-count coordinate}
+
+For the Pekeris waveguide of Section~\ref{sec:pekeris}, mode $m$ propagates above its cutoff
+\begin{equation}
+  f_m = \frac{(2m-1)\,c}{4D\sqrt{1-(c/\cbot)^2}},\qquad m=1,2,\dots,
+  \label{eq:cutoff}
+\end{equation}
+so with $\Pif = f/f_1$ the number of propagating modes is
+\begin{equation}
+  N_{\mathrm{modes}}(f) = \Big\lfloor \tfrac{2fD}{c}\sqrt{1-(c/\cbot)^2}+\tfrac12 \Big\rfloor = \Big\lfloor \tfrac{\Pif+1}{2} \Big\rfloor .
+  \label{eq:modecount}
+\end{equation}
+In the ionosphere the sense is reversed: a hop mode propagates only \emph{below} its maximum usable frequency, $f<f_{\mathrm{MUF}}=f_{\mathrm{crit}}\sec\varphi_0$ (flat earth, no field). A literal $f/f_{\mathrm{cut}}$ is therefore not the same quantity in both domains. What is comparable is the propagating-mode count itself, so we propose that each pack define $\Pif$ such that $N_{\mathrm{modes}}$ is a monotone function of it, and record $N_{\mathrm{modes}}$ alongside.
+
+\begin{question}
+Is the propagating-mode count the right common coordinate for ``modes above cutoff'' across a fluid waveguide and the Earth--ionosphere duct, or would you define $\Pif$ for HF as $f_{\mathrm{MUF}}/f$, or something else?
+\end{question}
+\begin{question}
+Does one ``medium variability rate'' (sound-speed-profile correlation time over $T$) belong in this list, or do internal waves and fronts need their own coordinate? Please replace the placeholder ranges with programme values where you can.
+\end{question}
+
+% ---------------------------------------------------------------------------
+\section{Generators}
+\label{sec:generators}
+
+Both first generators are deliberately simple so that truth is exact by construction. Their limitations are stated; the sonar lead's acceptance of the first is on the critical path (ADR-11).
+
+\subsection[Sonar: image-source Pekeris waveguide]{Sonar: image-source Pekeris waveguide\hfill{\normalfont\small \tagP{}}}
+\label{sec:pekeris}
+
+Isovelocity water column of depth $D$, sound speed $c$, density $\rho$, over a fluid half-space $(\cbot,\rhob)$ \citep{pekeris1948,jensen2011}. Pressure-release surface at $z=0$, bottom at $z=D$; source at $(0,z_s)$, receiver at $(r,z_r)$.
+
+\paragraph{Images.} Reflecting the source alternately in the surface ($z\mapsto -z$) and the bottom ($z\mapsto 2D-z$) generates image depths
+\begin{equation}
+  z^{(n,\sigma)} = 2nD + \sigma z_s,\qquad n\in\Z,\ \sigma\in\{+1,-1\},
+  \label{eq:images}
+\end{equation}
+with surface and bottom reflection counts
+\begin{equation}
+  (n_s,n_b) =
+  \begin{cases}
+    (|n|,\,|n|) & \sigma=+1,\\
+    (n-1,\,n) & \sigma=-1,\ n\ge1,\\
+    (|n|+1,\,|n|) & \sigma=-1,\ n\le0 .
+  \end{cases}
+  \label{eq:counts}
+\end{equation}
+(Check: $(n,\sigma)=(0,+)$ is the direct path; $(0,-)$ one surface bounce; $(1,-)$ one bottom bounce; $(1,+)$ surface then bottom.)
+
+\paragraph{Arrival list.} For each image, path length, delay and grazing angle are
+\begin{equation}
+  R = \sqrt{r^2+\big(z_r-z^{(n,\sigma)}\big)^2},\qquad \tau=R/c,\qquad
+  \theta=\arctan\frac{|z_r-z^{(n,\sigma)}|}{r},
+\end{equation}
+and the complex gain, with spherical spreading and a surface coefficient of $-1$, is
+\begin{equation}
+  a = \frac{(-1)^{n_s}\,\big[R_b(\theta)\big]^{n_b}}{R},
+  \qquad
+  R_b(\theta) = \frac{\rhob\cbot\sin\theta-\rho c\sin\theta_b}{\rhob\cbot\sin\theta+\rho c\sin\theta_b},
+  \qquad \frac{\cos\theta}{c}=\frac{\cos\theta_b}{\cbot}.
+  \label{eq:rayleigh}
+\end{equation}
+For $\cbot>c$ there is a critical grazing angle $\theta_c=\arccos(c/\cbot)$; below it $\sin\theta_b$ is imaginary, $|R_b|=1$ and $R_b$ carries a phase. That phase is frequency-independent for a lossless half-space, so it is applied to the analytic source signal:
+\begin{equation}
+  y(t) = \Re\Big\{\sum_k a_k\, s_a(t-\tau_k)\Big\} + n(t),
+  \qquad
+  h(\tau)=\sum_k a_k\,\delta(\tau-\tau_k).
+  \label{eq:received}
+\end{equation}
+Truth for W1 is the list $\{(\tau_k,a_k,\theta_k,n_s,n_b)\}$; the descriptors of Section~\ref{sec:descriptors} are exact functionals of it. The sum is truncated when $\tau_k$ exceeds a declared maximum delay or $|a_k|$ falls below a declared floor; the truncation is recorded as a parameter.
+
+\paragraph{What the model is and is not.} With constant reflection coefficients the image sum is the exact solution for the ideal waveguide. With the angle-dependent $R_b(\theta)$ evaluated at each image's specular angle it is the ray (high-frequency) approximation to the Pekeris field: it omits the branch-line (head-wave) contribution and the modal corrections near cutoff, and it has no refraction, so no ducted paths. Mode count is nevertheless well defined through~\eqref{eq:cutoff}, which is how $\Pif$ is assigned to a scene.
+
+\begin{question}
+Is this image model an acceptable first generator for delay-spread and arrival-count descriptors, with a refraction-capable normal-mode or ray code you already run as the second generator for the cross-domain step and the reality gate? Is applying $R_b(\theta)$ beyond the critical angle as a constant phase on the analytic signal how you would do it in the time domain?
+\end{question}
+
+\subsection[HF: discrete-mode skywave over a Chapman layer]{HF: discrete-mode skywave over a Chapman layer\hfill{\normalfont\small \tagP{}}}
+\label{sec:hf}
+
+Electron density in a Chapman layer with peak $N_m$ at height $h_m$ and scale height $H$ (overhead sun),
+\begin{equation}
+  N(h) = N_m\exp\!\Big(\tfrac12\big[1-\zeta-\ee^{-\zeta}\big]\Big),\quad \zeta=\frac{h-h_m}{H},
+  \qquad
+  f_p(h)\,[\mathrm{Hz}] \approx 8.98\,\sqrt{N(h)\,[\mathrm{m}^{-3}]} ,
+  \label{eq:chapman}
+\end{equation}
+critical frequency $f_{\mathrm{crit}}=f_p(h_m)$ \citep{davies1990}. A wave incident on the layer at angle $\varphi_0$ from the vertical (flat earth, no magnetic field) reflects where $f\cos\varphi_0=f_p(h)$, hence only if $f\cos\varphi_0<f_{\mathrm{crit}}$. Its group delay is that of the equivalent triangular path reflected at the virtual height (Breit--Tuve and Martyn's theorems),
+\begin{equation}
+  h'(f_v)=\int_0^{h_r}\frac{\dd h}{\sqrt{1-f_p^2(h)/f_v^2}},\quad f_v=f\cos\varphi_0,
+  \qquad
+  \tau_{n} = \frac{2n}{c}\sqrt{\Big(\frac{R_g}{2n}\Big)^2+h'^2},
+  \label{eq:hf-delay}
+\end{equation}
+for an $n$-hop mode over ground range $R_g$, with $\varphi_0$ found self-consistently from $\tan\varphi_0=R_g/(2n\,h')$. Modes are enumerated over $n$ and layers (E, F); the magnetoionic split is modelled as two modes with reflection conditions $f_p=f_v$ (ordinary) and $f_p^2=f_v(f_v-f_H)$ (extraordinary), $f_H$ the gyrofrequency. Per-mode gain combines spreading, a $1/f^2$ absorption law per D-region passage, and ground reflection on intermediate hops; ionospheric motion is a slow complex multiplicative process per mode with a declared coherence time. Truth is the mode list $\{(\tau_j, g_j(t))\}$, and the received signal has the same form as~\eqref{eq:received}.
+
+\subsection{What the two generators share}
+
+They share no propagation code and different physics (boundary images in a fluid layer versus refraction in a plasma layer with ground hops). They share one approximation family: \emph{discrete paths with per-path delay and gain}. That family is the anchor assumption itself, and the independence statement required for any cross-domain claim must say so \tagG{}. Measured data is required before any real-world claim.
+
+\subsection[The waveguide invariant and its HF analogue]{The waveguide invariant and its HF analogue\hfill{\normalfont\small \tagH{}}}
+\label{sec:wgi}
+
+In a range-independent ocean waveguide the intensity at range $r$ and frequency $\omega$ is a sum of modal cross terms $I(r,\omega)\propto\sum_{m,n}A_mA_n^\ast\cos\big[(k_m(\omega)-k_n(\omega))\,r\big]$. Along a striation the modal phase difference is constant, giving $\dd\omega/\dd r=\beta\,\omega/r$ with
+\begin{equation}
+  \beta = -\frac{\Delta S_p}{\Delta S_g},\qquad S_p=\frac{k}{\omega},\ S_g=\frac{\dd k}{\dd\omega},
+  \label{eq:wgi}
+\end{equation}
+the waveguide invariant \citep{dspain1999}; $\beta\approx1$ for low-order modes in a Pekeris waveguide, and it is estimable without range \citep{rouseff2011,cockrell2010,jang2024}.
+
+For any two discrete paths with delay difference $\Delta\tau(R)$ varying with a range-like parameter $R$, the interference $\cos[\omega\,\Delta\tau(R)]$ has striations along $\dd\omega/\dd R=-\omega\,(\dd\Delta\tau/\dd R)/\Delta\tau$, so the same construction defines
+\begin{equation}
+  \beta_{\mathrm{path}} = -\Big(\frac{\dd\ln\Delta\tau}{\dd\ln R}\Big)^{-1},
+  \label{eq:wgi-path}
+\end{equation}
+which reduces to~\eqref{eq:wgi} for modal pairs. Hypothesis H4 asks whether $\beta_{\mathrm{path}}$ computed from HF hop-mode pairs over ground range is approximately constant across mode pairs and ranges, as $\beta$ is for low ocean modes; if it is, the striation-slope descriptor is a mechanism that transfers, and if it is not, the analogy breaks at a named place.
+
+\begin{question}
+Is the flipped-ocean analogy strong enough that you would expect~\eqref{eq:wgi-path} to be approximately invariant for HF multimode returns? What would you look for first in a range--frequency display of an HF return?
+\end{question}
+
+% ---------------------------------------------------------------------------
+\section{Identifiability}
+\label{sec:ident}
+
+\subsection{The generative model}
+
+Each domain $d$ is written as
+\begin{equation}
+  y_d = \mathcal M_d\big[\mathcal F_d(\theta_{\mathrm{sh}},\theta_{\mathrm{pr}};\, c_d)\big] + \varepsilon_d ,
+  \label{eq:generative}
+\end{equation}
+with $\mathcal F_d$ the forward (propagation) model, $\mathcal M_d$ the measurement and processing chain, $c_d$ the physical context (medium state, geometry, band), $\theta_{\mathrm{sh}}$ the quantities the task treats as shared and $\theta_{\mathrm{pr}}$ the rest. ``Nuisance'' is relative to a task, never intrinsic: each task declares which components of $\theta$ are retained, conditioned on, or marginalized \tagG{}. A change to $\mathcal M_d$ (resampling, windowing, magnitude-only) is lossy processing; a change to $c_d$ (retune, sound-speed change) is a physical intervention; neither is a ``convention'', and each transform a pack admits is classified as exact, coordinate, lossy or physical and tested individually \tagG{}.
+
+\subsection{Blind deconvolution}
+
+With $y=h*s$ and neither factor known, the following map $y$ to itself:
+\begin{equation}
+  (h,s)\mapsto(\kappa h,\,s/\kappa),\qquad
+  (h,s)\mapsto\big(h(\cdot-\tau_0),\,s(\cdot+\tau_0)\big),\qquad
+  (h,s)\mapsto(h*g,\,g^{-1}*s)\ \ \text{for invertible }g .
+  \label{eq:ambig}
+\end{equation}
+Scale and delay are the minimal ambiguities; without structure, the whole family of invertible filters is. Identifiability up to scale requires structural constraints on $h$ or $s$ (subspace or sparsity), with conditions on the constraint dimensions relative to the observation length \citep{li2017}. \tagG{}: a learned estimator does not remove an ambiguity, it hides it, so every estimator lists \code{assumptions}, \code{identifiable} and \code{ambiguous}, and a head that needs an ambiguous quantity returns alternatives or abstains.
+
+\subsection{What the classical estimators assume}
+
+\paragraph{Cepstrum.} For $h=\sum_k a_k\delta(\tau-\tau_k)$ with a dominant first arrival, write $H(f)=a_0\ee^{-\jj2\pi f\tau_0}\prod_{k\ge1}$ factors; for two arrivals with $r=a_1/a_0$, $|r|<1$, $\Delta=\tau_1-\tau_0$,
+\begin{equation}
+  \log\big(1+r\,\ee^{-\jj2\pi f\Delta}\big)=\sum_{n\ge1}\frac{(-1)^{n+1}r^n}{n}\,\ee^{-\jj2\pi f n\Delta},
+  \label{eq:cepstrum}
+\end{equation}
+\begin{sloppypar}\noindent so the channel's complex cepstrum is a train of impulses at quefrencies $n\Delta$ with weights $(-1)^{n+1}r^n/n$, and $\log|Y|=\log|S|+\log|H|$ separates the source if $\log|S(f)|$ is smooth, meaning its cepstrum lies below the smallest $\Delta$. Assumptions: $|r|<1$ (the magnitude cepstrum cannot tell the ordering of two arrivals, only $|\Delta|$); arrivals separable in quefrency ($\Delta>1/B$); one source. Failure regimes follow: delay collisions, a non-smooth or non-stationary source spectrum, and overlapping sources, for which $Y=S_1H_1+S_2H_2$ does not factor and the logarithm separates nothing.\end{sloppypar}
+
+\paragraph{Artificial time reversal.} Beamforming an array toward one ray or mode arrival gives $P_b(f)\approx S(f)\,G_b(f)$ with $\arg G_b$ approximately linear in $f$; then $\arg S(f)\approx\arg P_b(f)-2\pi f\tau_b+\text{const}$, leaving an overall delay and scale unknown \citep{sabra2004,sabra2010}. Assumptions: known array geometry and local sound speed; a resolvable arrival with near-linear phase.
+
+\paragraph{Bilinear models for sources of opportunity.} If $s$ lies in a known low-dimensional subspace and $h$ in another, $y$ is bilinear in the two coefficient vectors and the pair is recoverable up to the intrinsic ambiguities under dimension conditions \citep{tian2020,li2017}. This is the acoustic template for the overlapped-source problem.
+
+\subsection{Multi-view identifiability, and what a deterministic view does not give}
+
+Let a recording be $x=f(\mathbf c,\mathbf s)$ with content $\mathbf c$ and style $\mathbf s$, and let a second view $\tilde x=f(\mathbf c,\tilde{\mathbf s})$ share the content while the style is \emph{independently} resampled. Under the conditions of \citet{vonkugelgen2021} and \citet{gresele2020}, a contrastive objective on $(x,\tilde x)$ recovers $\mathbf c$ up to an invertible map (block identifiability).
+
+\begin{remark}[Deterministic re-representations give consistency, not isolation]
+If $\tilde x=\phi(x)$ for a deterministic $\phi$ (waveform to spectrogram, waveform to estimated CIR), then for any encoder $e$ the pair $(e,\ e\circ\phi^{-1}|_{\mathrm{range}\,\phi})$ attains perfect agreement, and no style is stripped because none varies. Such pairs test that an encoder is consistent across representations (what CSI-CLIP++ demonstrates under ideal ray-traced CSI, \citealp{jiang2026}); they are not an alignment basis. Views with independent nuisance variation are: different sub-arrays on one event, different time windows of a stationary source through a slowly varying channel, different upstream chains on one recording, and controlled simulation pairs (same channel, different source; same source, different channel). This is the split between losses L2a and L2b.
+\end{remark}
+
+\subsection{The overlapped-source problem}
+
+Many sources in one band, $y=\sum_i h_i*s_i+n$, is blind multichannel separation. It becomes tractable only when the pack supplies structure that makes it identifiable: a source subspace (tonals plus a smooth continuum), the array manifold, and sparsity of each source's arrival set. An encoder does not discover this; it operates inside it.
+
+\begin{question}
+In the overlapped-source case, what specifically breaks the cepstral method for you: delay collisions, source non-stationarity, or association? Is there a source-subspace assumption that would make it identifiable in the bilinear sense of \citet{tian2020}? Below what $\Pit$ is arrival sparsity no longer a usable prior?
+\end{question}
+
+% ---------------------------------------------------------------------------
+\section{Transfer as a measured quantity}
+\label{sec:transfer}
+
+\subsection[Losses, budgets, effect]{Losses, budgets, effect\hfill{\normalfont\small \tagG{}}}
+
+For a task with descriptor $q$, an arm $a$ trained with $N$ target labels, and independent units $u\in U$ (scenes, sessions, instruments; never windows), the loss is aggregated at the unit,
+\begin{equation}
+  L_a(N) = \frac{1}{|U|}\sum_{u\in U}\ell\big(\hat q_{a,u},\,q_u\big),
+  \qquad
+  \ell = |\hat\rms-\rms|\,B \ \ \text{for delay spread (error in resolution cells)} .
+\end{equation}
+The effect of a candidate over a baseline is
+\begin{equation}
+  \delta(N) = L_{\mathrm{base}}(N)-L_{\mathrm{cand}}(N),
+  \label{eq:effect}
+\end{equation}
+positive favouring the candidate, with a confidence interval from bootstrap over units and over training seeds. No ratio undefined at zero baseline loss is used.
+
+\subsection[Hypotheses]{Hypotheses\hfill{\normalfont\small \tagH{}}}
+
+\begin{hypothesis}[H1, transfer at overlap]
+For fixed $q$ and $N$, on cells in $O_q$, $\delta(N)=L_{\mathrm{scratch}}(N)-L_{\mathrm{pretrained}}(N)$ exceeds a preregistered meaningful $\delta_{\min}$ with its CI excluding zero.
+\end{hypothesis}
+\begin{hypothesis}[H2, transfer surface]
+$\delta$ is a decreasing function of $d_q(c,C_{\mathrm{src}})$ in~\eqref{eq:overlap}. Reported as the surface $\delta(c)$ against $d_q$; a gain at large $d_q$ is a finding, never a failed gate.
+\end{hypothesis}
+\begin{hypothesis}[H3, regime conditioning]
+Conditioning on regime coordinates improves held-out utility over unconditioned arms under interventions that separate regime from domain identity. Routing telemetry alone is not evidence.
+\end{hypothesis}
+\begin{hypothesis}[H4, mechanism]
+$\beta_{\mathrm{path}}$ of~\eqref{eq:wgi-path} estimated in one bounded dispersive waveguide remains predictive in another and beats shuffled-pair and nuisance-matched controls.
+\end{hypothesis}
+\begin{hypothesis}[H5, uncertainty under shift]
+Coverage $\mathrm{cov}(c)=\frac1{n_c}\sum_{u\in c}\mathbb 1[q_u\in I_u]$ at nominal level survives shift across cells, or the applicability flag marks the cells where it does not. Reported with interval width, accepted-case error and abstention rate, each with its denominator.
+\end{hypothesis}
+
+\subsection[The baseline ladder as nested comparisons]{The baseline ladder as nested comparisons\hfill{\normalfont\small \tagG{} for the order}}
+
+Arms in order: (1) classical or direct calculation; (2) physically normalized features plus a small head; (3) independent target model from scratch; (4) target-only self-supervised pretraining; (5) pooled model with a domain token; (6) dense shared/private with adapters; (7) regime-routed experts, optional. Every arm above the first is compared to every arm below it at declared budgets. Arm 3 is mandatory because physics foundation models are conditional generalists with negative transfer in a substantial fraction of cases \citep{chu2026}, and arm 7 is an ablation because its motivating result covers two fluid regimes \citep{sharma2026}. Well-tuned simple baselines are hard to beat \citep{gulrajani2020}.
+
+\subsection[Decision rule and what is not evidence]{Decision rule and what is not evidence\hfill{\normalfont\small \tagG{}}}
+
+$\delta_{\min}$ is set from the from-scratch arm's development-set variability across seeds and frozen with a timestamp before the locked test partition is read. Supported: the CI of $\delta$ excludes zero and exceeds $\delta_{\min}$ at two or more budgets. Evidence against: the CI excludes $\delta_{\min}$ in the other direction at two or more budgets. Otherwise inconclusive. A crash is not negative transfer; lack of significance is not evidence of no effect; a result on one simulator relabelled is not cross-domain evidence.
+
+\subsection[Fusion, two rules only]{Fusion, two rules only\hfill{\normalfont\small \tagG{}}}
+
+Let $\mathcal R(r)$ be the set of root records a result $r$ derives from. If $\mathcal R(r_1)\cap\mathcal R(r_2)\neq\varnothing$, the two are one piece of evidence and the more conservative (wider) is kept; they are never multiplied. If the model-error dependence between $r_1$ and $r_2$ is unknown, they are reported side by side and not combined numerically. Any further rule needs its own association contract, dependence model and calibration test.
+
+\begin{question}
+The pilot is designed so that arrival-structure descriptors have overlapping cells and Doppler descriptors do not, and it measures $\delta$ against $d_q$ per descriptor rather than demanding a yes or no. Does that design lose anything you valued in the original conversation? Is descriptor-matched pairing across the two simulators an acceptable primary pairing basis, or do you want pairs defined from a shared physical scene?
+\end{question}

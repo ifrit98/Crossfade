@@ -9,11 +9,14 @@ A capability-aware evidence and experiment platform for wave-propagation inferen
 | [Crossfade in Two Pages](docs/Crossfade-in-Two-Pages.md) | Signals experts | The physics, the choices, and how the ML and LLM pieces fit, in about 1,400 words |
 | [Crossfade Technical Spec](docs/Crossfade-Technical-Spec.md) | Engineers and reviewers | v0.3 of the full specification: contracts, architecture, evaluation protocol, build slices, open questions, sources |
 | [Build pack v0.3](build_pack/README.md) | Implementers | Meta-architecture, the five contracts, repo layout, evaluation protocol, slices W0 to W3, decision register, PRDs, templates |
+| [Crossfade: The Mathematics in Three Pages](docs/tex/crossfade-math-brief.tex) | The signals lead, first read | LaTeX. The math edition condensed to three pages with the same nine checks; PDF alongside |
+| [Crossfade: The Mathematics to Check](docs/tex/crossfade-math.tex) | The signals lead | LaTeX. Every equation the platform relies on, with nine numbered checks; two are on the critical path. Build with `make -C docs/tex` (tectonic) |
+| [Crossfade, full thesis](docs/tex/crossfade-full.tex) | Anyone who wants the whole argument in one document | LaTeX. Motivation, the mathematics, architecture and contracts, models, uncertainty, evaluation protocol, build plan, decision register, open questions |
 
 ## Layout
 
 ```
-docs/          the two documents above
+docs/          the two markdown documents above; docs/tex/ holds the LaTeX sources (math-core.tex is shared by both PDFs)
 build_pack/    build pack v0.3, the implementation record for the spec
 archive/       how we got here: the transcript, the two original plans, the synthesis,
                the v0.2 review and responses, the superseded v0.2 build pack, the v0.1 spec export

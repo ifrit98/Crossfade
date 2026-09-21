@@ -1,0 +1,9 @@
+# tectonic intermediates (only appear with --keep-logs / --keep-intermediates)
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
