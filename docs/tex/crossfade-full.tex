@@ -2,6 +2,8 @@
 \input{macros}
 \setlength{\tabcolsep}{4pt}
 \usepackage{titlesec}
+\usepackage{tikz}\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc}
+\usepackage{graphicx}
 \titleformat{\part}[display]{\normalfont\Large\bfseries\filcenter}{Part \thepart}{6pt}{\huge}
 \titlespacing*{\part}{0pt}{24pt}{18pt}
 
@@ -145,7 +147,7 @@ Physics lives in packs & The core never branches on a domain, a representation k
 
 \paragraph{Modules.} \code{records} (the \code{Record} type, manifest, hashing, store: xarray to zarr for arrays, JSON for structured records, SQLite index); \code{tasks} (\code{TaskSpec}, versioned Pydantic models loaded from YAML); \code{packs} (the \code{Operation} protocol with \code{assess} and \code{run}; explicit registry); \code{runs} (\code{Run}, execution, replay); \code{bench} (splits, leakage checker, reports, claims; arrives in W1).
 
-\paragraph{Three execution paths, one ledger.} A run follows one path, chosen by \code{Operation.assess}, never by a planner and never by an LLM:
+\paragraph{Three execution paths, one ledger.} Figure~\ref{fig:architecture} shows the whole of it. A run follows one path, chosen by \code{Operation.assess}, never by a planner and never by an LLM:
 \begin{itemize}
 \item supported, op has no model $\rightarrow$ \emph{reference path}: classical op $\rightarrow$ \code{Run};
 \item supported, op is a model $\rightarrow$ \emph{learned path}: model op $\rightarrow$ \code{Run}, inputs limited to prediction-time fields;
@@ -153,6 +155,13 @@ Physics lives in packs & The core never branches on a domain, a representation k
 \item unsupported or unknown $\rightarrow$ no run; the assessment is returned with reasons and missing items.
 \end{itemize}
 All three write the same \code{Run}; the bench reads runs and writes reports; nothing else exists in the core.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/architecture.tikz}}
+\caption{The architecture. Inputs at three capability levels enter through domain packs (L1) into an immutable record store (L0). For each task, \code{assess} reads the record's declared capabilities and the task's requirements and chooses one of three paths, or refuses with reasons. All three paths write the same \code{Run} (L5) with five typed result states; the bench (L6) reads runs and writes reports and claims. The LLM (L7) reads records and reports and drafts pack metadata for human approval; it never writes a number. Physics lives entirely in the packs; the core is a ledger and a bench.}
+\label{fig:architecture}
+\end{figure}
 
 \paragraph{Size budgets.} Budgets enforce the constraints. Core at end of W0: 1500 lines (review at 2500). Fixture packs: 300. \code{sonar\_sim} including the simulator: 1200. \code{hf\_sim}: 1000. \code{bench.py}: 500. W2 models: 2000. Any single function: 60. An overrun is not a failure; it is a mandatory review that asks what became a framework and whether it needed to.
 
