@@ -14,7 +14,7 @@ A capability-aware evidence and experiment platform for wave-propagation inferen
 
 | Branch | Commits | Contents |
 | --- | --- | --- |
-| `main` | 3 (plus this handoff) | `README.md`, `docs/` (both documents), `docs/tex/` (LaTeX: the three-page math brief, the math sanity-check edition and the full thesis, sharing `math-core.tex` and `crossfade.bib`; `make -C docs/tex` with tectonic), `build_pack/` (v0.3), `archive/` (everything superseded), `HANDOFF.md` |
+| `main` | 3 (plus this handoff) | `README.md`, `docs/` (both documents), `docs/tex/` (LaTeX: the three-page math brief, the math sanity-check edition and the full thesis, sharing `math-core.tex` and `crossfade.bib`, plus `figures/architecture.tikz` used by the full thesis and built standalone; `make -C docs/tex` with tectonic), `build_pack/` (v0.3), `archive/` (everything superseded), `HANDOFF.md` |
 | `w0-workbench` | 1 ahead of main | The W0 code: `crossfade/`, `packs/`, `tasks/`, `tests/`, `fixtures/`, `pyproject.toml`, `crossfade.toml`. Not merged; waiting on the signals lead's review |
 
 **Local:** `/Users/nuggylover1210/Projects/Crossfade`. A `.venv` (Python 3.14.7, pydantic 2.13, xarray 2026.7, zarr 3.4, numpy 2.5, pint, pyyaml, pytest, ruff) is present and gitignored. `.venv/bin/pytest` from the branch runs 39 tests green in about 3 seconds. `.venv/bin/ruff check crossfade packs tests` is clean.

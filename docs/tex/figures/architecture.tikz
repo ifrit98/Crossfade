@@ -1,0 +1,68 @@
+% Crossfade architecture: ownership layers L0-L7, the five record types, and
+% the three execution paths that write one ledger. Input by the full thesis
+% and by figures/architecture-standalone.tex.
+\begin{tikzpicture}[
+  font=\footnotesize,
+  node distance=4mm and 4mm,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, minimum height=8mm, fill=white},
+  src/.style={box, fill=black!4, text width=3.9cm},
+  pack/.style={box, fill=blue!6, text width=8.8cm},
+  task/.style={box, fill=orange!8, text width=4.4cm},
+  store/.style={box, fill=green!7, text width=4.4cm},
+  path/.style={box, text width=3.9cm, minimum height=13mm},
+  ledger/.style={box, fill=green!7, text width=13.34cm},
+  bench/.style={box, fill=violet!7, text width=13.34cm},
+  llm/.style={box, dashed, fill=red!4, text width=3cm},
+  dec/.style={draw, diamond, aspect=2, align=center, inner sep=1pt, fill=yellow!12},
+  arr/.style={-{Latex[length=2mm]}, thick},
+  darr/.style={-{Latex[length=2mm]}, thick, dashed, black!55},
+  lbl/.style={font=\scriptsize, fill=white, inner sep=1pt},
+  hd/.style={font=\footnotesize\bfseries},
+]
+% --- left column, anchored on one x ---------------------------------------
+\node[store] (store) {\textbf{L0 Record store}\\content-hashed blobs + SQLite; units validated with pint or quarantined; \code{capabilities[]}, \code{parents[]}, \code{group\_ids}; no update API};
+\node[pack, above=7mm of store.north west, anchor=south west] (pack) {\textbf{L1 Domain packs} (plain Python packages, explicit list in \code{crossfade.toml})\\
+  \code{Operation}: \code{assess} (pure, never opens the payload) and \code{run}; preconditions, params, transform class\\
+  regime declarations per box $\cdot$ transforms classified and tested $\cdot$ priors $\cdot$ forward model or \code{unavailable}};
+\node[task, right=of pack] (task) {\textbf{\code{TaskSpec}}\\allowed inputs by availability class $\cdot$ quantities with \code{canonical\_kind} $\cdot$ truth source $\cdot$ split policy $\cdot$ baselines $\cdot$ metrics};
+
+% --- sources ---------------------------------------------------------------
+\node[src, above=6mm of pack.north west, anchor=south west] (s1) {Existing system exports\\C0--C2: detections, tracks,\\magnitude grams, RD cells};
+\node[src, right=of s1] (s2) {Research archives\\C3: element or beam\\time series with geometry};
+\node[src, right=of s2] (s3) {Simulators\\\code{sonar\_sim} (image-source Pekeris),\\\code{hf\_sim} (discrete-mode skywave)};
+
+% --- three paths, same left edge as the store ------------------------------
+\node[path, below=16mm of store.south west, anchor=north west] (p1) {\textbf{Output-only path}\\\code{import\_summary}\\quantities \code{upstream\_asserted};\\no anchor, no estimate};
+\node[path, right=of p1] (p2) {\textbf{Reference path}\\classical estimator (L2)\\cepstral, autocorrelation, ATR\\bootstrap uncertainty};
+\node[path, right=of p2] (p3) {\textbf{Learned path}\\encoder + head (L3/L4)\\inputs only through the deploy\\firewall; oracle fields make\\the run \code{diagnostic}};
+
+% --- assess sits above the reference path ---------------------------------
+\node[dec, above=7mm of p2.north, anchor=south] (assess) {\code{assess}\\(task, record)};
+\node[box, dashed, fill=black!3, text width=3cm, right=5mm of assess] (refuse) {unsupported or unknown:\\no run; reasons and\\missing items returned};
+
+% --- ledger, bench ---------------------------------------------------------
+\node[ledger, below=7mm of p1.south west, anchor=north west] (run) {\textbf{L5 \code{Run}}: immutable inputs, versioned op, code rev, env lock, seed $\cdot$ \code{Result} with five typed states (execution, answer, applicability, forward check, uncertainty) $\cdot$ every quantity has an origin $\cdot$ outputs are \code{Record}s $\cdot$ replay};
+\node[bench, below=5mm of run.south west, anchor=north west] (bench) {\textbf{L6 Bench}: split manifests at the independent unit $\cdot$ leakage checker walks \code{parents} $\cdot$ firewall and oracle handles $\cdot$ \code{Report} with validity, claims per descriptor and tested cells, mappings $\cdot$ the atlas};
+
+% --- LLM, right of the paths row -------------------------------------------
+\node[llm, right=6mm of p3] (llm) {\textbf{L7 LLM}\\reads records and reports; explains, retrieves, compares; drafts pack metadata for human approval; never writes a quantity, uncertainty or verdict};
+
+% --- arrows ----------------------------------------------------------------
+\draw[arr] (s1.west) -- ++(-7mm,0) |- node[lbl, pos=0.25, rotate=90] {ingest} ([yshift=2mm]store.west);
+\draw[arr] (s2.south) -- (pack.north -| s2.south);
+\draw[arr] (s3.south) -- ++(0,-2.5mm) -| ([xshift=-6mm]pack.north east);
+\draw[arr] (pack.south -| assess.north) -- (assess.north);
+\draw[arr] (task.south) |- (assess.north east);
+\draw[arr] (store.east) -- ++(4mm,0) |- (assess.west);
+\draw[arr] (assess.east) -- (refuse.west);
+\draw[arr] (assess.south) -- node[lbl, pos=0.7] {supported} (p2.north);
+\draw[arr] (assess.south) -- ++(0,-3.5mm) -| (p1.north);
+\draw[arr] (assess.south) -- ++(0,-3.5mm) -| (p3.north);
+\draw[arr] (p1.south) -- (run.north -| p1.south);
+\draw[arr] (p2.south) -- (run.north -| p2.south);
+\draw[arr] (p3.south) -- (run.north -| p3.south);
+\draw[arr] (run.south) -- node[lbl] {runs} (bench.north);
+\draw[arr] (run.west) -- ++(-4mm,0) |- node[lbl, pos=0.25, rotate=90] {outputs} ([yshift=-2mm]store.west);
+\draw[darr] (bench.east) -| node[lbl, pos=0.75, rotate=90] {reads} (llm.south);
+\draw[darr] (llm.east) -- ++(3mm,0) |- node[lbl, pos=0.75] {drafts, for approval} (task.east);
+\end{tikzpicture}
