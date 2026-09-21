@@ -1,0 +1,577 @@
+\documentclass[11pt,a4paper]{article}
+\input{macros}
+\setlength{\tabcolsep}{4pt}
+\usepackage{titlesec}
+\titleformat{\part}[display]{\normalfont\Large\bfseries\filcenter}{Part \thepart}{6pt}{\huge}
+\titlespacing*{\part}{0pt}{24pt}{18pt}
+
+\title{Crossfade\\[4pt]\large A capability-aware evidence and experiment platform for wave-propagation inference\\[2pt]\normalsize Full thesis, specification v0.3 and build pack v0.3, in one document}
+\author{Jason}
+\date{2026-09-21}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Crossfade connects sonar, HF skywave radar and RF systems through a common channel vocabulary anchored on the channel spreading function, and it measures where learned structure transfers between domains instead of assuming it. This document is the complete thesis: the motivation and the three separable contracts the platform commits to; the physics and mathematics it relies on, with the regime coordinates that turn ``does it transfer?'' into a preregisterable hypothesis; the identifiability limits that no estimator removes; the architecture, the five record types and the twenty-five invariants that make every result auditable; the models, the training objective and the baseline ladder; the typed treatment of uncertainty; the evaluation protocol with its three gates; the build plan in four slices with their acceptance criteria; the decision register; and the open questions for the sonar lead, two of which are on the critical path. Every requirement is tagged as an engineering guarantee \tagG{}, a provisional choice \tagP{}, or a hypothesis \tagH{}, and the tag decides what happens when it fails: a bug is fixed, a component is swapped, or a result is recorded.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+
+% =====================================================================
+\part{Motivation and claims}
+
+\section{What Crossfade is}
+
+The idea came from a conversation between a sonar and cross-domain signals lead and an ML lead. Every display anyone looks at, a range--Doppler map, a beam-level spectrogram, a cepstrum, is a measurement of the propagation channel's response, and the time-varying impulse response or the scattering function is what actually carries the answer: whether a target is there, whether it is closing, what the environment is doing. If you can estimate it, in the sonar lead's words, you have won. The same object describes an ocean waveguide, the Earth--ionosphere duct and an urban RF channel; the ionosphere is ``the ocean flipped upside down''. The question that followed was whether a model could learn what those channels have in common so that each new domain, environment or system needs less bespoke data and modelling, and where the modern tools, self-supervised encoders, physics-informed networks, large language models, actually fit.
+
+Crossfade is the version of that idea that survived two rounds of review. The channel is still the centre. What changed is that we now know which parts of the idea the physics supports, which parts are hypotheses to measure, and where the machine learning and the language model sit so that they cannot quietly take over the science.
+
+\paragraph{The one-sentence design.} Every quantity the platform estimates is defined as a functional of a named channel representation; every record carries units, coordinates, capabilities, processing history and lineage; every run has typed result states that are never filled with a passing value by default; every claim of transfer resolves to a preregistered comparison at a declared physical regime; and the language model reads records and writes drafts but never a number.
+
+\section{Three separable contracts}
+
+Crossfade commits to three contracts, and the platform stays useful if only the first holds.
+
+\begin{center}\small
+\begin{tabular}{@{}p{3.2cm}p{5.6cm}p{6cm}@{}}
+\toprule
+Contract & Claim & Evidence that it holds \\
+\midrule
+Interoperability & Any wave-sensing system's outputs can be ingested with units, coordinates, processing history and capability description intact, and replayed & A new domain connects through a domain pack without changing the core; a result reproduces from archived evidence \\
+Representation transfer & A shared encoder pretrained on one domain reduces the target-domain data needed to estimate a declared quantity & Frozen-encoder few-shot gain over from-scratch at declared budgets, with effect size and uncertainty \\
+Evidence fusion & Multiple results about one situation combine under a declared dependence model & Duplicate evidence is never double-counted; unknown dependence withholds numerical fusion \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Three kinds of statement}
+
+\begin{center}\small
+\begin{tabular}{@{}p{2.6cm}p{7cm}p{5cm}@{}}
+\toprule
+Tag & Meaning & On failure \\
+\midrule
+\tagG{} Guarantee & A property the software enforces: immutability, provenance, typed states, leakage checks, reproducible comparison & Bug; fix the software; a test exists or must be written \\
+\tagP{} Provisional & An architectural choice made now and replaceable later: canonical anchor kind, encoder family, storage backend & Swap the component; contracts unchanged \\
+\tagH{} Hypothesis & A scientific claim to be measured: transfer at matched regime, usefulness of a regime coordinate, benefit of routing & Record the result in the atlas; the platform is unaffected \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{What Crossfade is not}
+
+\begin{itemize}
+\item Not a universal physics-informed neural network. PDE-residual PINNs fail at high wavenumber through spectral bias \citep{krishnapriyan2021}, which is exactly the regime of wave propagation. Physics enters as structural priors on the channel and as forward models in domain packs, where available.
+\item Not an LLM that reads latent vectors. The LLM sits on typed records, explains, retrieves, and drafts pack metadata for human approval.
+\item Not a replacement for existing processing chains. Legacy systems connect through output-only packs and are never written to.
+\item Not a single latent space, and not a required reconstruction of one universal object from every input. Sharing is partial, per descriptor, and earned by benchmark.
+\end{itemize}
+
+Two tensions in the original conversation are resolved as follows. First, ``factor out the channel'' versus ``the channel is the information'': a variable is a nuisance relative to a task, never inherently, so each task specification says what is retained, conditioned on, or marginalized. Second, ``domain-invariant'' versus ``no information loss'': these cannot both hold in one compressed representation, so the archive preserves the source evidence, each derived representation declares what it retains, and private pathways carry what the shared one drops.
+
+\section{How the thesis was formed}
+\label{sec:provenance}
+
+The record of how we got here is kept in the repository's \code{archive/} directory. In order:
+\begin{enumerate}
+\item \textbf{The transcript.} The sonar lead's claims: the channel as the common thread; cepstral and blind channel-estimation work; the overlapped-source problem where many signals share one band and multipath traces cannot be assigned to sources; the practical question of window and FFT lengths across domains; the desire for a training objective that aligns the spaces ``naturally without carving something up''.
+\item \textbf{Two plans.} A first-principles plan that wrote down the generative structure $y_d=\mathcal M_d[\mathcal F_d(\theta;c_d)]+\varepsilon_d$ and derived the architecture from it, and a physics-modelling plan that supplied the representation atlas, the capability registry, the evidence graph and a workbench that stays useful when every transfer hypothesis fails.
+\item \textbf{The synthesis.} A referee document found the plans agree on roughly eighty percent of their content and are complementary where they differ, and added three things neither said: name the anchor as the spreading function; make the regime a dimensionless coordinate; take self-supervised pretraining on paired views seriously.
+\item \textbf{Spec v0.1 and an external architecture review.} The review's facts were examined claim by claim and found correct; its scaffolding was about twice the needed size (thirteen record types, twelve slices, a \code{conditional} assessment state with an authorization step). Its contract amendments were adopted with three modifications; its scaffolding was collapsed.
+\item \textbf{Spec v0.2, the build-pack assessment, and v0.3.} The v0.2 build pack was dissected against one question: is this the simplest way to achieve the same result? The answer produced build pack v0.3, one Python package with five modules, and spec v0.3 aligned to it.
+\item \textbf{The W0 workbench.} The first slice was implemented test-first on a branch and is waiting on the sonar lead's review before merging.
+\end{enumerate}
+
+\paragraph{Corrections we made to our own earlier claims.} These are worth listing because the reviewer for whom this document is written would have caught each of them.
+\begin{itemize}
+\item v0.1 called delay--Doppler ``the'' narrowband form and delay--scale ``the'' wideband form. Both always exist; what changes with $TB\,(v/c)$ is sparsity (Proposition~\ref{prop:rangewalk}).
+\item v0.1 called resampling, windowing and carrier retune ``conventions''. They are lossy processing or physical intervention, and each transform is now classified and tested individually.
+\item v0.1 claimed that contrasting a waveform with its own spectrogram and its own estimated CIR makes shared content identifiable. A deterministic re-representation has no nuisance to strip; only views with independent nuisance variation do (Section~\ref{sec:ident}).
+\item v0.1's placeholder regime ranges were disjoint in $M$ and $\betaB$ while the pilot required overlap. Resolved as per-descriptor matching, which produced the overlap result (Proposition~\ref{prop:overlap}).
+\item Citation corrections found while checking sources against the record: the bilinear-model paper is by Tian, Lee, Romberg, Durofchalk and Sabra (2020), not Sabra and Dowling; the ray-based blind deconvolution paper is Sabra, Song and Dowling (2010); Altes' wideband ambiguity paper is 1973; the 2011 time-scale characterization paper is by Chude-Okonkwo, Ngah and Abd Rahman; the CSI-CLIP++ authors are Jiang, Yu, Li, Gao and Xu.
+\end{itemize}
+
+% =====================================================================
+\part{Physics and mathematics}
+\input{math-core}
+
+% =====================================================================
+\part{Architecture and contracts}
+
+\section{Ownership layers}
+
+The eight layers below are ownership boundaries, not a mandatory pipeline. A run follows one of three paths (Section~\ref{sec:meta}), chosen deterministically by what the evidence supports. \tagG{} for the ownership rules; \tagP{} for the paths.
+
+\begin{center}\small
+\begin{tabular}{@{}p{2.2cm}p{3.4cm}p{4.6cm}p{4cm}@{}}
+\toprule
+Layer & Owns & Guarantee & Must never \\
+\midrule
+L0 Evidence & Immutable artifacts, manifest, lineage & Anything derived resolves to what was observed & Overwrite or reinterpret an artifact \\
+L1 Domain pack & Operations, priors, regime declarations, transforms, tests & Missing capabilities are explicit & Invent a forward model it does not have \\
+L2 Anchor estimators & Pack operations producing anchor estimates & Identifiability stated per quantity & Emit a point where the problem is ambiguous \\
+L3 Encoder & Learned models, when a task allows them & Inputs limited to declared prediction-time fields & See oracle or evaluation-only data \\
+L4 Inference & Heads, forward checks where a forward model exists & Every check has a typed state & Report an unavailable check as passed \\
+L5 Results & Run records with typed states, lineage & A consumer can tell what supports what & Present shared-lineage views as independent \\
+L6 Bench & Splits, leakage checks, reports, claims & Every claim resolves to runs, data, versions & Report a gain without its baseline \\
+L7 LLM & Explanations, pack-metadata drafts & Statements cite records & Write a quantity, uncertainty or verdict \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Meta-architecture: the simplest thing that meets the guarantees}
+\label{sec:meta}
+
+One Python package, \code{crossfade}, with five modules; a directory of domain packs that are ordinary Python packages; a store that is a directory of content-hashed files plus a SQLite index; a small CLI. \tagP{} for the module boundaries; \tagG{} for the constraints that follow.
+
+\begin{center}\small
+\begin{tabular}{@{}p{3.2cm}p{5.4cm}p{5.6cm}@{}}
+\toprule
+Constraint & Meaning & Why \\
+\midrule
+No services & Everything runs in one process or one subprocess per numerical worker & Single-user local use is the whole of W0 to W3 \\
+No plugin discovery & Packs are listed by import path in \code{crossfade.toml} & Discovery is the first thing that silently loads untrusted code; the explicit list is also the trust boundary \\
+No workflow engine & A run is one operation on one record; the ``graph'' is the list of runs a task produced & A DAG scheduler for a fixture that computes an RMS width is premature framework \\
+No base-class hierarchies & \code{Operation} is a \code{Protocol}; packs implement it with plain classes & Inheritance trees are where behaviour hides; a protocol is a checkable shape \\
+No state machines beyond run status & \code{Run.status} and the five result-state enums are the only states & The review's \code{conditional} state was a state machine with an authorization step; an assumption is a parameter \\
+Storage is files plus SQLite & Payloads at \code{store/blobs/<sha256>}; records, runs, reports as JSON files and rows & Immutable by construction: there is no update API \\
+Five record types & \code{Record}, \code{TaskSpec}, \code{Operation}, \code{Run}, \code{Report} & The review's thirteen carry the same information \\
+Physics lives in packs & The core never branches on a domain, a representation kind or a regime coordinate & The core is a ledger and a bench; packs are the science \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Modules.} \code{records} (the \code{Record} type, manifest, hashing, store: xarray to zarr for arrays, JSON for structured records, SQLite index); \code{tasks} (\code{TaskSpec}, versioned Pydantic models loaded from YAML); \code{packs} (the \code{Operation} protocol with \code{assess} and \code{run}; explicit registry); \code{runs} (\code{Run}, execution, replay); \code{bench} (splits, leakage checker, reports, claims; arrives in W1).
+
+\paragraph{Three execution paths, one ledger.} A run follows one path, chosen by \code{Operation.assess}, never by a planner and never by an LLM:
+\begin{itemize}
+\item supported, op has no model $\rightarrow$ \emph{reference path}: classical op $\rightarrow$ \code{Run};
+\item supported, op is a model $\rightarrow$ \emph{learned path}: model op $\rightarrow$ \code{Run}, inputs limited to prediction-time fields;
+\item record is a summary $\rightarrow$ \emph{output-only path}: \code{import\_summary} $\rightarrow$ \code{Run} with \code{upstream\_asserted} quantities;
+\item unsupported or unknown $\rightarrow$ no run; the assessment is returned with reasons and missing items.
+\end{itemize}
+All three write the same \code{Run}; the bench reads runs and writes reports; nothing else exists in the core.
+
+\paragraph{Size budgets.} Budgets enforce the constraints. Core at end of W0: 1500 lines (review at 2500). Fixture packs: 300. \code{sonar\_sim} including the simulator: 1200. \code{hf\_sim}: 1000. \code{bench.py}: 500. W2 models: 2000. Any single function: 60. An overrun is not a failure; it is a mandatory review that asks what became a framework and whether it needed to.
+
+\paragraph{What was rejected, and where it came from.} Regime-routed mixture-of-experts as the architecture (spec v0.1); a mandatory full-grid anchor payload from every pack (v0.1); universal PINN losses (transcript framing); the LLM inside the numerical path (transcript); thirteen record types with a \code{conditional} state (review); twelve slices with uncertainty as its own slice (review); ``no shared code'' replaced by documented independence (review; we kept both); calendar commitments removed entirely (review; we kept labelled planning estimates); xarray attributes as the unit system (v0.1); transforms as conventions (v0.1); deterministic paired views as an identifiability basis (v0.1); a \code{Mapping} written by every experiment (v0.1); H2 as a gate (v0.1); microservices, a graph database, a GNN evidence graph and a model-registry service (plan 2, v0.1).
+
+\section{The five record types}
+\label{sec:contracts}
+
+All are Pydantic v2 models serialized to JSON. Unknown fields are rejected on load, so a contract change is a version bump, never a silent addition. Field lists are \tagP{}; the invariants in Section~\ref{sec:invariants} are \tagG{}.
+
+\subsection{\code{Record}}
+\begin{sloppypar}
+Anything observed or derived: observation, representation, anchor estimate or structured summary, one type distinguished by \code{kind}. Key fields: \code{id}, \code{kind}, \code{payload\_kind} (array or structured), \code{payload\_ref}, \code{byte\_hash}, \code{manifest\_hash}, \code{source\_system}, \code{acquired\_at} (may be unknown, never inferred), \code{ingested\_at}, \code{data\_use}, \code{capability\_label} (C0--C3, a summary only), \code{capabilities[]} (explicit: \code{has\_phase}, \code{has\_array\_geometry}, \code{has\_source\_reference}, \code{has\_calibration}, \code{has\_timing}, \code{upstream\_asserted}), \code{coords}, \code{units}, \code{masks}, \code{group\_ids} (session, instrument, environment, source recording, scene; used by splits), \code{processing\_history[]} (each step with op id, version, params and transform class), \code{parents[]}, \code{produced\_by\_run}, \code{validation\_state}, \code{validation\_notes[]}, \code{regime} (per coordinate: value, units, provenance, availability, uncertainty), and \code{anchor} (required for anchor estimates: kind, descriptors each with definition and canonical kind, statistical semantics, normalization, assumptions, identifiable, ambiguous, uncertainty reference).
+
+\end{sloppypar}
+\paragraph{Identity.} \code{id} derives from the byte hash and the manifest hash together; deriving it from the manifest alone would collide for two payloads with one manifest. The manifest covers units, coordinates, masks, processing definitions and interpretation version, so identical bytes labelled seconds and milliseconds are different records. \code{produced\_by\_run} is provenance, not identity, so a replay that reproduces identical bytes and manifest reuses the record. Correcting metadata creates a successor with a parent link; the original is never edited.
+
+\paragraph{Payloads and quarantine.} Arrays are xarray datasets with named dimensions and coordinate variables, stored as zarr. Units are validated at ingest with pint; an attribute is a label, not a check. Any unit failure, or any data variable without units, stores the record with \code{validation\_state = quarantined}; it is listable and refused by every assessment until a successor supplies what is missing.
+
+\paragraph{Capabilities.} The C0--C3 labels remain as a summary vocabulary and never authorize anything. C0: upstream summaries (detections, tracks, scalar features; \code{upstream\_asserted}). C1: magnitude-only time--frequency views (\code{has\_timing}). C2: complex coefficients, beam-level STFT or range--Doppler cells (\code{has\_phase}, \code{has\_timing}). C3: element or beam time series with geometry. A record labelled C3 without a source reference still fails the preflight of an operation that needs one.
+
+\paragraph{Lineage.} \code{parents[]} records derivation only, in the spirit of PROV-O without importing the ontology. Shared parents mean shared evidence and nothing more is inferred from lineage.
+
+\subsection{\code{TaskSpec}}
+\begin{sloppypar}
+What a run may see and must return, loaded from YAML with the version in the filename: \code{task\_id}, \code{version}, \code{task\_kind} (transform, estimation, comparison), \code{question}, \code{allowed\_inputs[]} each with an availability class (\code{prediction\_metadata}, \code{prediction\_evidence}, \code{prediction\_estimate}, \code{training\_only}, \code{evaluation\_only}), \code{required\_capabilities}, \code{params} (each with type, units, required, \code{is\_assumption}), \code{quantities} (each with definition, units, \code{canonical\_kind} or \code{not\_channel}, \code{ambiguity\_allowed}), \code{truth\_source}, \code{normalization} (rule, reversibility, fit scope), \code{regime\_coords[]}, \code{baselines[]}, \code{metrics[]}, \code{split\_policy}, \code{uncertainty\_requirement}, \code{completion\_rule}, \code{promotion\_rule}.
+
+\end{sloppypar}
+The firewall lives here: the deploy handle returns only fields whose availability is one of the first three classes; training-only and evaluation-only fields are served through a different function, and any run that receives them is tagged \code{diagnostic}. Assumptions are parameters: a physical assumption an operation needs is a parameter with \code{is\_assumption = true}; if absent, \code{assess} returns \code{unsupported} naming it. Nothing is ever assumed on the caller's behalf.
+
+\subsection{\code{Operation}}
+\begin{sloppypar}
+A pack's executable unit, a protocol: \code{op\_id}, \code{version}, \code{preconditions[]} (capabilities the record must carry), \code{params\_model} (unknown params refused), \code{transform\_class} (exact, coordinate, lossy, physical, none), \code{determinism} (exact or tolerance), \code{is\_model}, and two methods. \code{assess(task, record, params)} is pure and fast: it reads capabilities, validation state, units, coordinates, processing history and params, never the payload, and returns \code{supported}, \code{unsupported} or \code{unknown} with named reasons and missing items. Value-level checks (a nonfinite unmasked sample, zero total weight) therefore happen in \code{run} and produce \code{answer = unsupported} with reasons in diagnostics while the run itself succeeds. The registry reads the explicit pack list, imports each module, checks \code{CORE\_API\_VERSION == 1}, and fails whole on any error; there is no partial registry.
+
+\end{sloppypar}
+\subsection{\code{Run}}
+\begin{sloppypar}
+One execution attempt: \code{run\_id}, task and op with versions, \code{inputs[]}, \code{params}, \code{assumptions\_used}, \code{code\_rev}, \code{env\_lock\_hash}, \code{seed}, \code{path} (reference, learned, output\_only, diagnostic), timestamps, \code{status} (succeeded, failed, cancelled), \code{attempt\_of}, \code{error}, and a \code{result} holding \code{quantities} (each with value, units and origin: \code{upstream\_asserted}, \code{computed}, \code{inferred}), \code{outputs[]}, and the typed states of Section~\ref{sec:states}. Publication order: output records first, then the run JSON, then the SQLite row, each via temp file and atomic rename; a crash between steps leaves orphan outputs that \code{verify} reports, never a run referencing missing outputs. \code{replay} re-resolves the op by id and version, re-executes with the same inputs, params and seed, compares by the determinism contract, and records a new run with \code{attempt\_of} set.
+
+\end{sloppypar}
+\subsection{\code{Report}}
+One declared comparison: an \code{ExperimentSpec} (task, data manifests with roles, arms with exposure, primary metric, effect rule with a frozen timestamp, seeds, tuning policy, budgets, \code{exploratory} flag), a \code{SplitManifest} (unit, partitions, frozen timestamp, hash), \code{runs[]}, per-arm metrics with intervals and denominators, observed budgets, \code{validity} (valid, invalid, incomplete), deviations, \code{claims[]} and \code{mappings[]}. A \code{Claim} names direction, descriptor, the regime cells actually tested, arm and baseline arm, outcome (supported, evidence\_against, inconclusive), effect with interval, and limitations. A \code{Mapping} is recorded only for an implemented correspondence. Claims are written only from valid reports; a failed arm is a failed run and never evidence against anything.
+
+\section{Invariants}
+\label{sec:invariants}
+
+Each has a test; the slice column names where it is first enforced. All \tagG{}.
+
+{\small
+\begin{longtable}{@{}lp{11.5cm}l@{}}
+\toprule
+Id & Invariant & Slice \\
+\midrule
+\endhead
+CF-01 & Payload blobs are written once and never modified; there is no update path & W0 \\
+CF-02 & Record identity covers payload bytes and semantic manifest; same bytes with different units are different records & W0 \\
+CF-03 & Every array record has validated units on every data variable and coordinate, or is quarantined & W0 \\
+CF-04 & A capability label never authorizes an operation; \code{assess} checks explicit capabilities and params & W0 \\
+CF-05 & \code{assess} returns \code{unknown} when prerequisites cannot be established; \code{unknown} is never coerced to \code{supported} & W0 \\
+CF-06 & A task fixes allowed inputs by availability class; the deploy handle cannot return training-only or evaluation-only fields & W0 \\
+CF-07 & An anchor estimate may omit its payload; no field is fabricated to satisfy a shape & W0 \\
+CF-08 & A deterministic transform reports uncertainty \code{not\_applicable}; a learned estimate without validated uncertainty reports \code{unavailable}; neither is ever a number & W0 \\
+CF-09 & A forward check with no forward model is \code{unavailable}, never \code{passed} & W0 \\
+CF-10 & Every run resolves to immutable inputs, a versioned op, a code revision and an environment lock & W0 \\
+CF-11 & Failed and cancelled runs are persisted and linked; a retry is a new run with \code{attempt\_of} & W0 \\
+CF-12 & Outputs are published before the run that references them & W0 \\
+CF-13 & Every quantity carries an origin: \code{upstream\_asserted}, \code{computed} or \code{inferred} & W0 \\
+CF-14 & Splits are at the declared independent unit; every derived record inherits its root's group ids; the checker refuses a partition crossing & W1 \\
+CF-15 & Oracle-provenance regime coordinates and evaluation-only fields never reach a run on the learned or reference path; a run that uses them is diagnostic & W1 \\
+CF-16 & Test membership is frozen before any pretraining; unlabeled test exposure is recorded as exposure & W2 \\
+CF-17 & A valid negative or inconclusive report completes an experiment; an invalid or incomplete report produces no claim & W1 \\
+CF-18 & Every claim names its arm, baseline arm, direction, descriptor, regime cells tested, effect and budgets & W1 \\
+CF-19 & Tested support is the list of evaluated cells; the atlas never marks an untested interior cell validated & W1 \\
+CF-20 & Shared-parent results are one piece of evidence; unknown model dependence withholds numerical fusion & W3 \\
+CF-21 & No pack operation writes to an upstream system & W3 \\
+CF-22 & Anchor-estimate uncertainty is propagated or the result is tagged \code{conditional\_on\_plugin} naming the estimate & W1 \\
+CF-23 & Every quantity in a task names a \code{canonical\_kind} or is tagged \code{not\_channel} & W0 \\
+CF-24 & Every transform in a pack has a class and an equivalence test & W1 \\
+CF-25 & Unknown fields on any record type are rejected on load & W0 \\
+\bottomrule
+\end{longtable}}
+
+\section{Domain packs}
+
+A domain pack is a plain Python package exposing a manifest and operations. The core registers packs from an explicit list; the platform owns execution, records and evaluation; the pack owns domain meaning. \tagG{} for the boundary; \tagP{} for the element list: \code{manifest} (name, version, core API version, operation ids, fixtures), \code{operations[]} (at least one), \code{regime} (declared ranges per group, placeholder or measured; canonical anchor kind per box), \code{transforms} (every transformation applied or admitted, classified and tested), \code{tests} (golden fixtures, known failure cases, regime boundaries where a method stops working), and optionally \code{priors}, \code{forward\_model} (declared \code{unavailable} when absent), \code{anchor\_estimators} and \code{vocabulary}.
+
+\paragraph{Transform classification.} Under the generative model~\eqref{eq:generative}:
+\begin{center}\small
+\begin{tabular}{@{}p{2.6cm}p{4.2cm}p{3.6cm}p{4cm}@{}}
+\toprule
+Class & Examples & Expected behaviour & Test \\
+\midrule
+Exact convention & Unit relabel, sample-index origin, complex sign convention & Invariant & Output identical after inverse conversion \\
+Coordinate transform & Array rotation, beam steering, reference-frame change & Equivariant & Output transforms by the declared rule \\
+Lossy processing & Resampling, window length and overlap, magnitude-only, decimation, CFAR thresholding & Declared information loss; applicability may change & Retained-information contract stated and checked on fixtures \\
+Physical intervention & Carrier retune, sound-speed change, ionospheric state change, source motion & Answer may change & Not an invariance; recorded as a context change \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Passive sonar pack, sketch.} Operations: beamform-and-STFT (lossy, parameters recorded), cepstral arrival estimation, ray-based blind deconvolution, striation-slope estimation, later a learned descriptor estimator, each declaring preconditions (array geometry, sound speed at the array, band). Regime: $M$ up to $10^{-2}$, $\betaB$ up to $1$, $\Pif$ 1 to 50, placeholders. Canonical kind: \code{delay\_scale} when $\Pis$ exceeds the declared threshold, else \code{delay\_doppler}. Priors: sparse ray arrivals with surface and bottom images; approximately linear modal phase in frequency for low-order modes; waveguide-invariant striation slope. Forward model: the image-source generator of Section~\ref{sec:pekeris}; a normal-mode or ray model later; a neural-operator surrogate of a parabolic-equation solver is a later option \citep{kovachki2023}.
+
+\paragraph{HF skywave pack, sketch.} Operations: matched filter and Doppler processing (lossy), multimode delay--Doppler estimation from range--Doppler cells, sparse CIR reconstruction under interference. Regime: $M$ around $10^{-6}$, $\betaB$ around $10^{-2}$, $\Pin$ set by ionospheric coherence time. Canonical kind: \code{delay\_doppler}. Priors: few discrete modes with ordinary and extraordinary splitting; slow multiplicative fading; mode delay ordering. Forward model: the discrete-mode generator of Section~\ref{sec:hf}; a published ray tracer once its license and callable form are verified.
+
+\paragraph{Output-only pack.} A legacy system connects with one operation, \code{import\_summary}, no forward model and no anchor estimator. It participates in comparison and lineage warnings, and every request for reconstruction returns \code{unsupported} with the missing capabilities named. This is how existing programmes join without touching their processing chains, and it ships independently of any transfer result.
+
+% =====================================================================
+\part{Estimators, models and the training objective}
+
+\section{Anchor estimators}
+
+Every anchor estimator states what it can and cannot recover from its inputs (Section~\ref{sec:ident}). A capability label never authorizes an estimator; its own \code{assess} checks its preconditions and refuses with the missing items named.
+
+\begin{center}\small
+\begin{tabular}{@{}p{3.4cm}lp{3.4cm}p{3.6cm}p{2.6cm}@{}}
+\toprule
+Estimator & Level & Recovers & Assumes & Ambiguous \\
+\midrule
+Striation slope, waveguide invariant $\beta$ & C1 & Range-rate to range ratio, mode interference structure & Few-mode waveguide, broadband source & Absolute range without a frequency anchor \\
+Cepstral multipath & C1/C2 & Relative arrival delays, boundary reflection structure & Dominant first arrival, arrivals separable in quefrency & Arrival ordering; delays within one cell \\
+Artificial or synthetic time reversal & C3 & Source waveform and source-to-array impulse response & Linear modal phase, known geometry and local sound speed & Overall delay and scale \\
+Ray-based blind deconvolution & C3 & Impulse response and source waveform, broadband & Resolvable ray arrivals, known geometry & Source spectrum absolute level \\
+Bilinear models for sources of opportunity & C3 & Channel from unknown but structured sources & Source in a known low-dimensional subspace & Source--channel split within the subspace \\
+Wideband ambiguity, Mellin-domain scale & C2/C3 & Scale $\alpha$ and delay $\tau$ jointly & Known or estimated source, wideband regime & Sign of scale for symmetric spectra \\
+Delay--Doppler multimode & C2 & Mode delays and Dopplers & Narrowband regime, few discrete modes & Ordinary--extraordinary assignment \\
+Sparse CIR reconstruction under interference & C2 & Full-band CIR from partial spectrum & Sparse arrivals, temporal smoothness & Arrivals within one resolution cell \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Learned estimators.} Trained on the pack's forward model with the same structural priors as losses (sparsity in delay, smoothness in time, forward consistency through $\mathcal M_d$), following the physics-informed transformer precedent that reached power-delay-profile similarity $0.82$ against $0.62$ for the best baseline at fifty percent spectrum occupancy \citep{zubow2026}. A learned estimator inherits the classical estimator's assumption list and declares its training regime box. An estimated anchor used as a training target is a \code{pseudo\_label} and the record says so.
+
+\paragraph{Estimator output.} An anchor record: a kind, an optional payload, named descriptors as functionals of the canonical kind, statistical semantics, and the three lists \code{assumptions}, \code{identifiable}, \code{ambiguous}. A downstream head that needs an ambiguous quantity returns a distribution over the alternatives or abstains.
+
+\paragraph{Out of scope here.} Detection, classification and tracking heads sit on top of results and are owned by each programme's existing systems or by later task-specific work.
+
+\section{Models}
+
+The first learned candidate is a dense shared/private encoder with domain adapters \citep{bousmalis2016}, trained only after the baseline ladder of Section~\ref{sec:transfer} has been run. Regime-routed mixture of experts is an ablation arm, not the architecture. \tagP{} for the candidate; \tagH{} for every claim that one arm beats another.
+
+\paragraph{Why routing is demoted.} The 2026 result that motivated it covers two fluid regimes and reports domain-separated routing with low validation error \citep{sharma2026}. That is evidence routing can avoid gradient conflict between incompatible regimes; it is not evidence that routing is best for inverse channel tasks, and a router fed regime coordinates that trivially predict the target is not discovering physics. The 2026 benchmark showing physics foundation models to be conditional generalists with negative transfer in a substantial fraction of cases \citep{chu2026} is why the from-scratch arm is mandatory.
+
+\paragraph{Losses.} Each is individually validated in the literature; their composition is the hypothesis.
+\begin{center}\small
+\begin{tabular}{@{}p{2.8cm}p{3.4cm}p{3.8cm}p{4.2cm}@{}}
+\toprule
+Loss & Form & Views or inputs & Claim it supports \\
+\midrule
+L1 Masked modelling & Reconstruct masked patches of the native view & Unlabeled archives per domain & Label-free pretraining, as in masked spectrogram modelling for radio and the RF foundation models \\
+L2a Representation consistency & Contrastive between deterministic re-representations of one recording & Same recording, deterministic transforms & Encoder consistency across representations \citep{jiang2026}; not identifiability \\
+L2b Content isolation & Contrastive between views with independent nuisance variation & Sub-arrays of one event; time windows of a stationary source; different upstream chains; controlled simulation pairs & Isolation of shared physical content up to an invertible map \citep{vonkugelgen2021,gresele2020}; the alignment basis \\
+L3 Cross-domain anchor alignment & Contrastive between shared latents of records from different domains whose canonical-kind descriptors match, restricted to the descriptor's overlapping regime box & Descriptor-matched pseudo-pairs, tagged as such & Sharing where physics says it may exist; never whole-domain alignment \citep{zhao2019} \\
+L4 Structural physics & Arrival sparsity in $\tau$, temporal smoothness of $h$, forward consistency where $\mathcal F_d$ exists & Anchor estimates & The physics-informed part that applies to channels \citep{zubow2026,sabra2004} \\
+L5 Transform consistency & Invariance under exact conventions only; equivariance under coordinate transforms; tested behaviour under lossy processing & Pack transform declarations & The transform classification \\
+L6 Private preservation & Reconstruct native view from shared and private latents; orthogonality penalty & All & Domain detail retained \citep{bousmalis2016} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Pretraining plan.} L1 begins once the split policy and transform contracts are frozen and test membership is fixed; ``unlabeled'' does not exempt data from exposure rules. L2a and L4 follow once anchor estimates exist. L2b requires paired views from the pairing protocol. L3 runs only at declared regime overlap per descriptor. L5 and L6 throughout. Task heads last.
+
+\paragraph{Budgets.} Adaptation efficiency (target labels, target unlabeled exposure, adaptation compute) and total cost (simulation, pretraining, tuning, inference) are two separate views, always both. For any sparse arm, active and total parameters are both reported.
+
+\paragraph{Not the objective.} Latent overlap, embedding visualizations, and domain indistinguishability under a discriminator are not success criteria.
+
+\paragraph{What transfers today, in these domains.} ImageNet-pretrained vision models slightly beat audio-pretrained networks on passive sonar target recognition: what transferred was spectrogram texture, not acoustics \citep{mohammadi2024}. Masked-autoencoder pretraining on communications I/Q transferred to radar signal recognition with a one-shot gain close to in-domain pretraining \citep{huang2025}. CSI-CLIP++ transferred an RF channel encoder across three tasks and across simulators under ideal ray-traced CSI \citep{jiang2026}. The pattern: shallow transfer from generic image pretraining is easy and weak; deeper transfer appears when the objective is built on paired physical views of the channel. The domain-expert tier is being built by others (RF foundation models; an underwater acoustic foundation model under contract). The differentiated contribution is the anchor, the regime atlas and the evidence layer.
+
+% =====================================================================
+\part{Inference, uncertainty and typed states}
+
+\section{Typed result states}
+\label{sec:states}
+
+Every result carries five independent state fields. No single Boolean stands in for them, and no state is ever filled by default with a passing value. \tagG{}
+
+\begin{center}\small
+\begin{tabular}{@{}p{2.2cm}p{5.6cm}p{6.2cm}@{}}
+\toprule
+Dimension & States & Rule \\
+\midrule
+Execution & succeeded, failed, cancelled & A failed run publishes no quantities \\
+Answer & complete, partial, abstained, unsupported & partial names what is missing \\
+Applicability & in\_scope, out\_of\_scope, unknown & unknown is the default, never in\_scope \\
+Forward check & passed, failed, unavailable, not\_applicable & Absent forward model means unavailable, never passed \\
+Uncertainty & posterior, confidence\_interval, predictive\_interval, ensemble\_summary, unavailable, not\_applicable & A deterministic transform is not\_applicable; a learned estimate without validated uncertainty is unavailable \\
+\bottomrule
+\end{tabular}
+\end{center}
+Each quantity is tagged \code{upstream\_asserted}, \code{computed} or \code{inferred}, so a consumer can tell a legacy system's own confidence from a Crossfade estimate.
+
+\section{Inference methods}
+
+Not one algorithm. A deterministic transform returns a value. A classical estimator returns a value and whatever error characterization its literature supports; in W1, a block bootstrap over time segments. Where a pack has a forward model and a prior, simulation-based inference is the preferred route to a posterior: train a neural posterior estimator on $(\theta,\ \mathcal M_d[\mathcal F_d(\theta)]+\varepsilon)$ pairs and amortize on real observations, using the \code{sbi} library before anything custom, with the diagnostics the guides prescribe \citep{deistler2025,dax2026}. SBI is a method a pack may use, not a return type the platform demands.
+
+\paragraph{Forward validation.} Where $\mathcal F_d$ and $\mathcal M_d$ exist, the engine predicts what the pack would observe under the inferred explanation and compares at the observation level actually available. A check on data that trained the estimator is labelled in-sample. Agreement is necessary and not sufficient; when the posterior is multimodal or an ambiguous quantity is involved, \code{alternatives[]} is populated.
+
+\paragraph{Uncertainty record.} Beyond its kind, an uncertainty carries the estimand, the conditioning information, the method and version, and the population and regime box on which it was validated. A result that plugs in a point anchor estimate says \code{conditional\_on\_plugin} and names the estimate; otherwise the anchor's own uncertainty is propagated. Post-hoc calibration degrades under shift \citep{ovadia2019} and conformal guarantees hold under exchangeability or specific departures, so applicability is reported alongside every uncertainty and \code{unknown} is a legitimate value.
+
+\paragraph{Abstention.} A head may abstain when applicability is out of scope or unknown, or when a forward check fails a declared threshold. Abstentions are runs with \code{answer = abstained}, so the abstention rate is a metric with a denominator.
+
+\paragraph{Fusion.} The two rules of Section~\ref{sec:transfer} and nothing more until a use case exists.
+
+% =====================================================================
+\part{Evaluation protocol}
+
+\section{Three levels of demonstration}
+
+\begin{center}\small
+\begin{tabular}{@{}lp{6.6cm}p{4.4cm}@{}}
+\toprule
+Level & Shows & Does not show \\
+\midrule
+E0 Contract fixture & T0 computes a known property of a supplied profile; storage, units, capability handling, replay work & Anything about channels or transfer \\
+E1 Within-domain estimation & A declared descriptor is estimated from permitted observations and compared to independent truth with its own error model; classical and from-scratch baselines characterized & Transfer \\
+E2 Cross-domain transfer & Only the declared transfer intervention changes; target utility measured under held-out conditions; shared-simulator smoke tests, independent-domain evidence and measured-data validation reported separately & Universal generalization \\
+\bottomrule
+\end{tabular}
+\end{center}
+An E0 result is never promoted to E1 or E2 by relabelling data.
+
+\section{Preregistration, firewall, splits, pairing}
+
+\paragraph{Preregistration.} An experiment is confirmatory only if every field is filled: task version, data manifests, roles, arms with exposure, primary metric, effect rule with a frozen timestamp, seeds, tuning policy, budgets, independent unit, expected failure modes, exclusions. A spec missing any of these may run as exploratory and produces no claim. No universal percentage threshold is invented; baseline variability is estimated on development data, the meaningful effect is agreed, and the rule is frozen before the locked test is viewed.
+
+\paragraph{Feature and truth firewall.} Every input field has one availability class. The deploy handle serves only prediction-time fields. Oracle fields are served by a separate function and any run that calls it is diagnostic and cannot satisfy the promotion gate. Anchor estimates used for pairing are pseudo-labels carrying estimator version, lineage and uncertainty. Test reference answers never choose routing, positive pairs or normalizers on the deploy path. In simulation this is the main leakage risk: a coordinate computed from the simulator's true delay spread, feeding a model whose target is delay spread, is the answer in disguise.
+
+\paragraph{Splits and exposure.} At the task's independent unit: session, environment, instrument, scene or source recording. Every derived record inherits its root's group ids; the checker walks parents to the root and refuses a partition crossing. Test membership is frozen and hashed before any pretraining. Target-domain unlabeled exposure is recorded per arm. Normalization, regime selection, pairing thresholds and calibration are fit on training or training-plus-development partitions only.
+
+\paragraph{Pairing.} Each pair record declares one basis: \code{same\_event} (two instruments observed one physical event), \code{controlled\_mechanism} (two independent simulators rendered a deliberately corresponding mechanism), \code{descriptor\_matched} (pseudo-pair by matching estimated descriptors; weakest), or \code{negative}. They are never pooled. Shuffled-pair and nuisance-matched controls run where the task's shortcut risks call for them.
+
+\paragraph{Simulator independence.} A cross-domain claim from simulation requires both no shared forward-physics kernel and a written independence statement covering scene distribution, approximation family and truth construction. Code independence is the cheap auditable proxy; assumption independence is the target; neither substitutes for the other or for measured-data validation.
+
+\section{Gates}
+
+\begin{center}\small
+\begin{tabular}{@{}lp{4cm}p{5.2cm}p{3cm}@{}}
+\toprule
+Gate & Question & Passes when & Does not imply \\
+\midrule
+Delivery & Did the declared arms run validly and reproducibly? & Required arms present; leakage checks pass; report rebuilds from persisted runs & Any scientific result \\
+Scientific & What does the result support? & A scoped claim with effect, interval, budgets and limitations, in any direction & Deployment fitness \\
+Promotion & Is the model useful for its declared inputs? & Preregistered utility and uncertainty criteria met at the independent unit on relevant data & Anything beyond tested cells \\
+\bottomrule
+\end{tabular}
+\end{center}
+An experiment is complete when a preregistered comparison ran validly and produced a report. A model is promoted when the report supports its declared utility. A hypothesis is supported, contradicted, or inconclusive. None of the three implies another.
+
+% =====================================================================
+\part{Build plan}
+
+\section{Slices}
+
+Four slices ship now and three wait for a reason to exist. Each is a complete user-visible operation with a demo and a test suite. Estimates are planning numbers for the funding conversation, labelled as such, and assume the sonar lead's W1 input arrives in the first two weeks. \tagP{}
+
+\begin{center}\small
+\begin{tabular}{@{}p{2.2cm}p{5cm}p{2.6cm}p{2.2cm}p{2.4cm}@{}}
+\toprule
+Slice & Deliverable & Gate & Estimate & Blocked by \\
+\midrule
+W0 Workbench & Ingest a supplied profile; compute T0; preserve units and lineage; replay; refuse reconstruction on a summary record & Delivery & 2--3 weeks, one engineer & Nothing \\
+W1 First task & Simulated beam time series from the image-source waveguide; RMS delay spread and arrival count via cepstral and autocorrelation estimators; bootstrap uncertainty; bench with grouped splits and leakage checks; a report characterizing the classical estimators & Delivery and scientific & 4--6 weeks, two people & Sonar lead confirms the quantity and the simulator \\
+W2 Transfer charter & HF pack with an independent multimode simulator; SSL arm; dense shared/private arm; one preregistered transfer trial per descriptor with typed uncertainty & Scientific, any direction & 8--12 weeks, two to three people & W1 split policy frozen; pairing basis; independence statement \\
+W3 Output-only adapter & Read-only import of one existing system's summary export; comparison; duplicate-evidence warnings; no upstream write & Delivery & 2--3 weeks, parallel to W1 & Which system and export format \\
+Later: routing & Dense versus routed ablation & After W2 shows a dense arm worth beating & Deferred & W2 result \\
+Later: explanations & LLM over records; pack-metadata drafts for approval & After W1 records are stable & Deferred & Stable Run and Report \\
+Later: fusion & Numerical combination under a declared dependence model & After a use case exists & Deferred & A use case \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Dependencies.} W0 and W3 share \code{Record} and \code{Run} and nothing else. W1 shapes the contracts alongside W0 and starts the day its quantity is confirmed. W2 depends on W1's split policy for its pretraining start and on W1's estimators for its baselines.
+
+\paragraph{What each gate refuses.} W0: any anonymous tensor; any record without explicit capabilities; any fabricated default for a missing unit, reference scale or convention; any assessment that coerces unknown to supported. W1: any learned-arm result without ladder arms 1 and 2; any random-window split; any oracle coordinate on the reference or learned path; any estimator without a typed uncertainty or an explicit unavailable. W2: any gain measured on one simulator relabelled; any missing independence statement; any pretraining before test membership is frozen; any calibration claim validated only on the training cells; any claim from an invalid or incomplete report. W3: any write to upstream processing; any duplicate evidence counted twice; any upstream confidence relabelled as a Crossfade estimate.
+
+\paragraph{Team.} One person on packs and estimators (the sonar lead's domain), one on the core and bench, and from W2 one on models.
+
+\section{W0: the workbench, as built}
+
+Implemented test-first on branch \code{w0-workbench}: five core modules (\code{records}, \code{tasks}, \code{packs}, \code{runs}, \code{db}) plus the CLI, two fixture packs, two task specifications, the golden fixture, and 39 tests mapped one-to-one to the PRD's acceptance tests; ruff clean; core at 804 lines against a 1500-line budget. Three details settled during implementation are reflected in the contracts: value-level checks live in \code{run}, not \code{assess}; \code{Record.id} derives from both hashes; \code{produced\_by\_run} and \code{validation\_notes} were added. The worker runs in-process; subprocess isolation with a resource limit is the next increment and changes no contract. The branch is not merged pending the sonar lead's review of the architecture.
+
+\section{W1: the first real task}
+
+\paragraph{Task specifications.} \code{pdp.rms\_delay\_spread} and \code{pdp.arrival\_count}, both estimation tasks. Allowed inputs: beam time series (prediction evidence); sampling rate, band, array geometry, local sound speed (prediction metadata); the arrival list (evaluation only); simulator parameters (training only). Required capabilities: \code{has\_timing}, \code{has\_phase}. Parameters: window length (lossy, recorded), cepstral lifter, \code{assume\_point\_source} (an assumption). Quantities: RMS delay spread in seconds and arrival count, both with canonical kind \code{power\_statistic}, the count with ambiguity allowed. Truth: exact functionals of the arrival list. Regime coordinates: $\Pit$ (inference, estimated; and oracle for diagnostics), $\Pif$ (inference, from band and depth if supplied), $\mathrm{SNR}_{\mathrm{cell}}$ (estimated). Split policy: unit is the scene; held-out groups are scene and environment. Uncertainty: ensemble summary or predictive interval, never unavailable.
+
+\paragraph{Regime grid.} Water depth $\{50,100,200\}$~m; range $\{1,3,10\}$~km; bottom $\{$sand, silt, rock$\}$ as sound speed and density pairs; centre frequency $\{200,500,1000\}$~Hz with fractional bandwidth $\{0.3,0.6\}$; SNR per cell $\{-10,0,10\}$~dB: 486 cells, three scenes per cell with different source and receiver depths. Cells are the atlas's tested support.
+
+\paragraph{Operations.} \code{beamform\_stft} (lossy; declares the window length and ships a test that delay spread from two window lengths agrees within a declared tolerance on the golden scene); \code{autocorr\_pdp} (anchor kind \code{power\_statistic}, PDP on a delay grid plus the two descriptors; block bootstrap); \code{cepstral\_pdp} (kind \code{descriptors\_only}; block bootstrap); \code{direct\_from\_truth} (diagnostic path). Each estimator lists \code{identifiable = [rms\_delay\_spread]} and \code{ambiguous = [arrival\_count within one cell]}.
+
+\paragraph{Experiment W1-E1.} Arms: the two estimators and the diagnostic sanity arm. Primary metric: absolute error in RMS delay spread in resolution cells, per scene. Secondary: arrival-count error under the stated merging rule; bootstrap coverage at the nominal level; abstention rate below a declared SNR floor. Effect rule: characterization, not superiority; per-cell error and coverage tables. Seeds: five. Claims: one per estimator per descriptor, supported if coverage is within tolerance across tested cells, else evidence against with the failing cells listed. These are claims about the estimator's error model, not about transfer. Definition of done: ten acceptance tests green, a report in the store, and a one-page summary for the sonar lead of which cells each estimator is trustworthy in.
+
+\section{W2: the transfer charter}
+
+\paragraph{Software.} \code{packs/hf\_sim} with the discrete-mode simulator, an \code{import\_rangedoppler} lossy transform, a \code{multimode\_dd} estimator producing a \code{delay\_doppler} anchor with the two descriptors, and a bootstrap uncertainty; an independence statement stored as a record; model operations in each pack for ladder arms 2 to 6, all reading inputs through the deploy firewall; pairing records with a declared basis (primary \code{controlled\_mechanism}: for each cell in the overlap the two simulators render scenes whose PDP descriptors are deliberately matched; secondary \code{descriptor\_matched}, never pooled); the regime coverage report produced before any transfer run.
+
+\paragraph{Arms and budgets.}
+\begin{center}\small
+\begin{tabular}{@{}p{5cm}lp{3.2cm}ll@{}}
+\toprule
+Arm & Ladder & Pretrained from & Target labels & Target unlabeled \\
+\midrule
+A1 classical & 1 & none & 0 & 0 \\
+A2 features + head & 2 & none & $N$ & 0 \\
+A3 scratch & 3 & none & $N$ & 0 \\
+A4 target SSL & 4 & target unlabeled & $N$ & all train \\
+A5 pooled & 5 & both, labeled & $N$ & all train, both \\
+A6 dense shared/private, source-pretrained & 6 & source SSL then source labeled & $N$ & source all; target 0 \\
+A6$'$ dense shared/private, source + target SSL & 6 & source and target SSL & $N$ & all train, both \\
+\bottomrule
+\end{tabular}
+\end{center}
+Learning curve $N\in\{8,32,128,512\}$ target scenes. Controlled: target labels, adaptation compute, tuning budget. Reported: upstream pretraining compute, total parameters. Seeds: five. Independent unit: scene, held out by scene and environment.
+
+\paragraph{Effect rule, to be frozen before the locked test.} Primary metric as in W1. Effect $\delta(N)=L_{\mathrm{A3}}(N)-L_{\mathrm{A6}}(N)$. Meaningful $\delta_{\min}$: the smallest delta exceeding two seed standard deviations of A3 on the development set at $N=32$, frozen and timestamped before the test partition is read. Decision as in Section~\ref{sec:transfer}.
+
+\paragraph{Shortcut controls.} Shuffled-pair control (A6 with pairing bases permuted; a gain surviving this is not transfer); nuisance-matched control (target scenes matched on SNR and bandwidth only); oracle-regime diagnostic (A6 given oracle $\Pit$; diagnostic path; cannot promote). The predicted negative control is a Doppler-spread descriptor added to both packs if time allows.
+
+\paragraph{Open inputs that block the scientific gate, not the software.} Pairing-basis approval (sonar lead); HF simulator simplification acceptance (an HF-familiar reviewer); whether the W1 error model is tight enough in the overlap cells to serve as pseudo-label truth for A6$'$ (numerical reviewer); a named measured dataset for the reality check (sonar lead).
+
+\section{W3: the output-only adapter}
+
+One pack with two operations: \code{import\_summary} parses an existing system's export into summary records with origin \code{upstream\_asserted}, the system's confidence kept in diagnostics and never under uncertainty, and group ids from whatever session or file identifiers the export carries; \code{compare\_summaries} aligns two summary records on time and declared keys, lists agreements and disagreements, and warns when both resolve to the same parents. Non-goals: any estimate, any anchor, any learned op, any numerical fusion, any write to the upstream system, any live connection. A static check confirms no file writes outside the store. Blocked only by which system and which export format (ADR-25).
+
+\section{Data and simulators}
+
+Nothing is invented as available. The two in-house generators are specified in Sections~\ref{sec:pekeris} and~\ref{sec:hf}. Public candidates for the reality gate, each with what must be verified before use: SWellEx-96 (current hosting and terms; which arrays and events are public; source-track resolution); SBCEX17 ship-noise recordings (whether the recordings or only derived products are public); DeepMIMO (simulated, so it serves the independent-generator check, not the reality gate); a measured indoor or vehicular time-varying CIR dataset with enough sessions for grouped splits (to be identified). Programme data enters only at W3 through the output-only adapter unless C3 archives are already cleared for research use; every record carries the owner's \code{data\_use} label; nothing assumes a new collection campaign. Every dataset is described by a manifest record (source, license or clearance, capabilities, group-id scheme, truth kind and error model, regime coverage as a list of cells, known gaps) before any run consumes it, and the bench produces from the manifests the per-descriptor regime coverage and intersection before any transfer hypothesis runs.
+
+\section{Decision register}
+
+{\small
+\begin{longtable}{@{}lp{7.4cm}lp{2.6cm}p{2cm}@{}}
+\toprule
+Id & Decision and choice & Tag & Status & Blocks \\
+\midrule
+\endhead
+ADR-01 & Product unit: capability-aware task execution with an auditable ledger; transfer is a measured extension & P & Adopted & -- \\
+ADR-02 & Five record types & P & Adopted & -- \\
+ADR-03 & Anchor as a typed family with optional payload; descriptors as functionals of a canonical kind; canonical kind per regime box & P & Adopted & -- \\
+ADR-04 & Three execution paths chosen by assess; no planner, no DAG engine & P & Adopted & -- \\
+ADR-05 & Explicit capabilities plus per-op preconditions; C0--C3 as labels only & G & Adopted & -- \\
+ADR-06 & Assumptions are parameters; no conditional state & G & Adopted & -- \\
+ADR-07 & Content-hashed files plus SQLite; zarr for arrays; JSON for structured & P & Adopted & -- \\
+ADR-08 & pint validation at ingest; quarantine on failure & G & Adopted & -- \\
+ADR-09 & Explicit pack list; one core API version integer & G & Adopted & -- \\
+ADR-10 & First scientific task: RMS delay spread and arrival count from beam time series, simulated, C3 & P & Proposed, awaiting sonar lead & W1 \\
+ADR-11 & W1 simulator: in-house image-source Pekeris waveguide; refraction-capable code as second generator later & P & Proposed, awaiting sonar lead & W1 \\
+ADR-12 & Truth exact from the arrival list in W1; estimated anchors are pseudo-labels everywhere & G & Adopted & -- \\
+ADR-13 & Regime coordinates task-scoped, provenance-bearing, nullable, with availability; per-descriptor matching & G / H & Adopted & -- \\
+ADR-14 & First learned arm: dense shared/private with adapters after ladder arms 1--5; routing optional & P & Adopted & W2 \\
+ADR-15 & SSL starts when W1's split policy is frozen and test membership hashed & G & Adopted & W2 \\
+ADR-16 & Typed uncertainty kinds; block bootstrap for classical estimators in W1 & G / P & Adopted & -- \\
+ADR-17 & Forward checks only where a pack declares a forward model & G & Adopted & -- \\
+ADR-18 & Report holds claims; Mapping only for implemented correspondences; tested cells listed & G & Adopted & -- \\
+ADR-19 & Simulator independence: no shared kernel and a written statement, both & G & Adopted & W2 \\
+ADR-20 & Output-only adapter proceeds without any transfer result & G & Adopted & -- \\
+ADR-21 & Two fusion rules only & G & Adopted & -- \\
+ADR-22 & LLM reads records, drafts for approval, never a quantity or verdict & G & Adopted & -- \\
+ADR-23 & Adaptation and total cost reported separately; active and total parameters for sparse arms & G & Adopted & -- \\
+ADR-24 & Named datasets with fields and truth before any real-world claim & G & Open & W2 reality gate \\
+ADR-25 & W3 target system and export format & P & Open & W3 \\
+ADR-26 & Shared deployment only when concurrency exists & P & Open, nonblocking & -- \\
+ADR-27 & Size budgets; overrun triggers review & G & Adopted & -- \\
+ADR-28 & Dependency gates for sequencing; labelled planning estimates & P & Adopted & -- \\
+\bottomrule
+\end{longtable}}
+
+Before an estimator becomes a reference operation, the sonar lead and a numerical reviewer approve, per representation: its definition, sign and normalization conventions, statistical meaning, physical approximations, and its conformance tests.
+
+% =====================================================================
+\part{The language model, and the people}
+
+\section{Where the LLM sits}
+
+The LLM never touches a number. It reads typed records, each estimate with its assumptions, its uncertainty kind and the cells it was validated on, and it explains, retrieves, compares hypotheses and says what evidence is missing. It has no authority to write a quantity, an uncertainty, or a verdict on whether a mapping is valid. \tagG{}
+
+Its one genuinely new job is upstream of the models: turning a conversation like the original one into a draft domain pack, a structured list of assumptions, admissible transforms, known failure regimes and test cases, for a human to approve. Operator feedback splits three ways: presentation (``this explanation was confusing''), metadata (``this run used a different window''), and scientific adjudication (``independent evidence says this estimate was wrong''). Only the third is a training label, and only after it is versioned. Fine-tuning on operator feedback comes after the evidence layer can tell those three apart, not before.
+
+\section{Open questions for the sonar lead}
+
+The first block is on the critical path; W1 cannot be specified without it. The rest can arrive over the first month.
+
+\paragraph{The first real task (blocks W1).}
+\begin{itemize}
+\item Is RMS delay spread plus resolvable-arrival count from beam time series the right first descriptor? If not, which functional of the PDP or scattering function, and why?
+\item Which propagation code should generate truth for it, and what are that code's known accuracy limits, in dB and in which regimes?
+\item Which classical estimators for it do you already run, at which capability level, and what are their known failure regimes?
+\item What metadata is genuinely available at inference time for a real recording: array geometry, local sound speed, band, nothing else?
+\end{itemize}
+\paragraph{Anchor and regime.}
+\begin{itemize}
+\item Do the programme ranges for $M$, $\betaB$, $\Pit$, $\Pin$, $\Pif$ and per-cell SNR match the placeholders? Replace them.
+\item Is delay--scale the right canonical kind for the passive wideband case, or does the modal picture carry structure that delay--scale loses at the ranges you care about?
+\item Does one medium-variability rate capture what matters, or do internal waves and fronts need their own coordinate?
+\item For HF: is the flipped-ocean analogy strong enough that a waveguide-invariant-like descriptor should exist in multimode returns? What would you look for first?
+\end{itemize}
+\paragraph{Estimators and identifiability.}
+\begin{itemize}
+\item In the overlapped-source case, what specifically breaks the cepstral method: delay collisions, source non-stationarity, or association?
+\item Is there a source-subspace assumption that would make the overlapped-source problem identifiable in the bilinear sense?
+\item Below what $\Pit$ is arrival sparsity not a usable prior?
+\end{itemize}
+\paragraph{Data and scope.}
+\begin{itemize}
+\item Which archives exist at C3 and could be cleared for research pretraining? Volume and span?
+\item Which public ocean-acoustic datasets do you trust for the reality gate, and which environmental truth do they carry?
+\item Is there any paired data, one event seen by an acoustic and an RF system, or is cross-domain pairing purely descriptor-matched?
+\item Should the first HF pack target skywave OTH, or a simpler narrowband RF channel with richer public data, with OTH second?
+\item Is a C0 output-only adapter for the current operator tool the right W3 target, or is there a C2 system that gives a stronger first integration?
+\end{itemize}
+\paragraph{On the composition.}
+\begin{itemize}
+\item The design composes the first plan's inference formulation with the second plan's workbench and the review's contracts. Does the composition lose anything you valued in either?
+\item Unlabeled pretraining starts as soon as splits are frozen, ahead of any benchmark result. Do you see a risk in that?
+\end{itemize}
+
+\section{The pitch, in one paragraph}
+
+We are building a reusable inference layer that connects existing sensing systems through a common physical anchor: the channel's spreading function, which every wave-propagation domain already estimates in its own way. Each domain keeps its own models and processing. The platform records what each system observed, under which assumptions, and with what uncertainty, and it tests where learned structure actually transfers across domains at matched physical regime. The immediate deliverable is consistent integration and traceable, uncertainty-aware analysis. The research upside is that each new domain or environment needs less bespoke data and modelling, because the parts of the physics that are shared are learned once.
+
+\clearpage
+\bibliographystyle{plainnat}
+\bibliography{crossfade}
+\end{document}

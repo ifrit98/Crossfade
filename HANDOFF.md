@@ -14,7 +14,7 @@ A capability-aware evidence and experiment platform for wave-propagation inferen
 
 | Branch | Commits | Contents |
 | --- | --- | --- |
-| `main` | 3 (plus this handoff) | `README.md`, `docs/` (both documents), `build_pack/` (v0.3), `archive/` (everything superseded), `HANDOFF.md` |
+| `main` | 3 (plus this handoff) | `README.md`, `docs/` (both documents), `docs/tex/` (LaTeX: the three-page math brief, the math sanity-check edition and the full thesis, sharing `math-core.tex` and `crossfade.bib`; `make -C docs/tex` with tectonic), `build_pack/` (v0.3), `archive/` (everything superseded), `HANDOFF.md` |
 | `w0-workbench` | 1 ahead of main | The W0 code: `crossfade/`, `packs/`, `tasks/`, `tests/`, `fixtures/`, `pyproject.toml`, `crossfade.toml`. Not merged; waiting on the signals lead's review |
 
 **Local:** `/Users/nuggylover1210/Projects/Crossfade`. A `.venv` (Python 3.14.7, pydantic 2.13, xarray 2026.7, zarr 3.4, numpy 2.5, pint, pyyaml, pytest, ruff) is present and gitignored. `.venv/bin/pytest` from the branch runs 39 tests green in about 3 seconds. `.venv/bin/ruff check crossfade packs tests` is clean.
@@ -114,6 +114,7 @@ The full list is section 12 of the spec and section 6 of the explainer.
 - `ruff check && ruff format --check && pytest -q` is the whole gate.
 - Commits end with the Claude co-author trailer and session link (see git log for the format).
 - Docs are living: edit the Claude Doc, then re-export to `docs/`. Never edit `docs/*.md` alone or the two diverge.
+- The LaTeX documents in `docs/tex/` are written from the spec and build pack, not exported from a doc. When the spec changes, `math-core.tex` and `crossfade-full.tex` need the same change by hand. Every bib entry was checked against Crossref or arXiv on 2026-09-21; three citation errors in the spec were found that way (Tian et al. 2020 for the bilinear paper, Sabra, Song and Dowling 2010, Altes 1973).
 - Never invent a dataset, a threshold, or a result. Mark it open with the slice it blocks.
 - Bylines in the repo are date and first name only; no email.
 - Archive, never delete. `archive/` exists so decisions can be traced.

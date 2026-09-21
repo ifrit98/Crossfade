@@ -1,0 +1,42 @@
+\documentclass[11pt,a4paper]{article}
+\input{macros}
+
+\title{Crossfade: The Mathematics to Check\\[4pt]\large A sanity-check edition for the signals lead}
+\author{Jason}
+\date{2026-09-21 \quad (spec v0.3)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent This document isolates every mathematical claim that the Crossfade platform relies on, in the order the platform relies on them: the channel representations and when each is sparse; the descriptors as functionals of a named representation; the dimensionless regime coordinates and the overlap result that falls out of them; the two simple generators and what they omit; the identifiability limits that no estimator, classical or learned, can remove; and the definition of transfer as a measured effect. Each section ends with numbered \emph{Check} items. We are asking for three kinds of response to each: it is right, it is wrong in this way, or it is convention-dependent and here is the convention we should declare. Nothing about software is here; the full thesis is a separate document. The two items on the critical path are Check~3 (the first descriptor) and Check~6 (the first generator).
+\end{abstract}
+
+\tableofcontents
+\bigskip
+
+\section*{Why these are the claims}
+
+The platform is built around one idea from the original conversation: the time-varying impulse response or scattering function of the channel is the common thread across sonar, HF skywave and RF, and every display anyone looks at is a functional of it. Two rounds of review turned that idea into a set of statements with different standing. Some are theorems about linear operators (Section~\ref{sec:channel}). Some are definitions we chose and could have chosen otherwise (Sections~\ref{sec:descriptors} and~\ref{sec:regime}). Some are modelling simplifications whose adequacy only a practitioner can judge (Section~\ref{sec:generators}). Some are limits that hold regardless of method (Section~\ref{sec:ident}). And some are hypotheses that the benchmark exists to measure (Section~\ref{sec:transfer}). The tags \tagG{}, \tagP{}, \tagH{} say which is which, so that a wrong claim can be fixed at the right level: a bug, a swapped convention, or a recorded result.
+
+\input{math-core}
+
+\section*{The checks, collected}
+\addcontentsline{toc}{section}{The checks, collected}
+
+For convenience, the numbered checks above, in the order they appear:
+\begin{enumerate}[label=\textbf{Check \arabic*.},leftmargin=*]
+\item The range-walk number $\Pis=TB|\alpha-1|$ as the delay--Doppler versus delay--scale criterion, and its threshold.
+\item Whether a local (non-WSSUS) scattering function is needed as a first-class kind.
+\item \textbf{Critical path.} RMS delay spread and resolvable-arrival count as the first two descriptors.
+\item The propagating-mode count as the common ``modes above cutoff'' coordinate across ocean and ionosphere.
+\item Whether medium variability needs its own coordinate; programme ranges for the groups.
+\item \textbf{Critical path.} The image-source Pekeris generator as the first generator, and the beyond-critical-angle treatment.
+\item Whether $\beta_{\mathrm{path}}$ should be expected to be invariant in HF multimode returns.
+\item What breaks the cepstral method with overlapped sources, and whether a source subspace makes it identifiable.
+\item Whether the per-descriptor pilot design loses anything, and the pairing basis.
+\end{enumerate}
+
+\bibliographystyle{plainnat}
+\bibliography{crossfade}
+\end{document}

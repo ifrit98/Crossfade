@@ -1,0 +1,96 @@
+\documentclass[10pt,a4paper]{article}
+\input{macros}
+\geometry{a4paper,margin=18mm}
+\setlength{\parskip}{2pt}
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\titlespacing*{\subsection}{0pt}{5pt}{2pt}
+
+\title{\vspace{-14mm}Crossfade: The Mathematics in Three Pages}
+\author{Jason}
+\date{2026-09-21 \quad (condensed from \emph{The Mathematics to Check}, spec v0.3)}
+
+\begin{document}
+\maketitle
+\vspace{-8mm}
+\noindent\small Every quantity Crossfade estimates is a functional of a named channel representation; regimes are dimensionless coordinates; transfer is a measured effect. Tags: \tagG{} the software enforces it, \tagP{} a swappable convention, \tagH{} a claim the benchmark measures. Nine \emph{Checks} are collected at the end; Checks 3 and 6 are on the critical path. Notation: $x,y$ baseband input and output; $h(t,\tau)$ Bello kernel; $f_c,B,T$ carrier, bandwidth, observation; $c$ medium speed; $v$ closing speed; $M=v/c$; $\betaB=B/f_c$; arrival list $\{(\tau_k,a_k)\}$.
+\normalsize
+
+\section{The channel and when each representation is sparse}
+\vspace{-2pt}
+\begin{equation}
+  y(t)=\int h(t,\tau)\,x(t-\tau)\dd\tau
+  =\iint \SH(\tau,\nu)\,x(t-\tau)\,\ee^{\jj2\pi\nu t}\dd\tau\dd\nu
+  =\iint \hW(\tau,\alpha)\sqrt{\alpha}\,x\big(\alpha(t-\tau)\big)\dd\tau\dd\alpha .
+\end{equation}
+$\SH=\mathcal F_{t\to\nu}h$ is the delay--Doppler spreading function and exists for any LTV kernel \citep{bello1963,matz2013}; $\hW$ is the delay--scale form \citep{altes1973}, with $\alpha=1+v/c$ one-way or $(c+v)/(c-v)$ monostatic \tagP{}. Neither is ``the'' narrowband or wideband form; what depends on regime is sparsity. One path with scale $\alpha_0$ has drifting delay $\tau(t)=\alpha_0\tau_0+(1-\alpha_0)t$, so at resolution $(1/B,\,1/T)$ it occupies about $\max(1,\Pis)$ cells along each delay--Doppler axis, where
+\begin{equation}
+  \boxed{\ \Pis=TB\,|\alpha_0-1| = TB\,M\ }\qquad\text{(range-walk number; Kelly--Wishner $TB\,2v/c\ll1$ \citep{kelly1965})},
+\end{equation}
+and is a single point in $(\tau,\alpha)$. A pack declares the threshold on $\Pis$ at which its canonical kind switches from \code{delay\_doppler} to \code{delay\_scale}; it is not core logic. \textbf{Realization vs.\ statistic} \tagG{}: under WSSUS, $\E[\SH(\tau,\nu)\SH^\ast(\tau',\nu')]=\CH(\tau,\nu)\delta(\tau-\tau')\delta(\nu-\nu')$; the power--delay profile is $P(\tau)=\int\CH\dd\nu$. Every anchor record says which it holds (\code{realization}, \code{expectation}, \code{estimate}, \code{posterior\_samples}, \code{pseudo\_label}); WSSUS is a declared parameter, never a default.
+
+\section{Descriptors as functionals}
+For a profile $P\ge0$: $\bar\tau=\int\tau P/\int P$, $\rms^2=\int(\tau-\bar\tau)^2P/\int P$; discrete with $w_k=E_k/\sum_jE_j$: $\rms^2=\sum_kw_k(\tau_k-\bar\tau)^2$. Resolvable-arrival count $\Narr(\Delta,\gamma)$ \tagP{}: merge arrivals within $\Delta$ greedily in delay order, count clusters with energy $\ge\gamma\max_iE_i$; the rule is recorded and within-cell arrivals are listed as \code{ambiguous}. For an arrival list, $P(\tau)=\sum_k|a_k|^2\delta(\tau-\tau_k)$ and both descriptors are exact, which is why W1's simulator emits the list.
+\begin{equation}
+  \rms^2=\tfrac12\sum_{k,l}w_kw_l(\tau_k-\tau_l)^2 ,
+  \label{eq:pairwise}
+\end{equation}
+so $\rms$ is shift-invariant and determined by the delay-difference profile $Q(\tau)=\sum_{k,l}|a_k|^2|a_l|^2\delta(\tau-\tau_k+\tau_l)$. A passive receiver's autocorrelation $R_{yy}=\sum_{k,l}a_ka_l^\ast R_{ss}(\tau-\tau_k+\tau_l)$ has exactly those weights, so it recovers $\rms$ without the source when pairwise differences exceed $1/B$, and is biased when they collide; W1 measures that bias against exact truth. \tagG{}: one string per quantity, \code{canonical\_kind} (or \code{not\_channel}), is the whole mechanism making a sonar descriptor and an HF descriptor comparable.
+
+\section{Regime coordinates and the overlap result}
+\vspace{-4pt}
+\begin{center}\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll@{}}
+\toprule
+$M=v/c$ & $\betaB=B/f_c$ & $\Pit=\rms B$ & $\Pin=\dspread T$ \\
+$\PiL=L/\lambda$ & $\Pif=f/f_{\mathrm{cut}}$ (mode count) & $\Pih=k\,h_{\mathrm{rms}}\sin\theta$ & $\mathrm{SNR}_{\mathrm{cell}}$ \\
+\midrule
+sonar; HF placeholders: & $M$: $10^{-3}$--$10^{-2}$; $10^{-6}$--$10^{-5}$ & $\betaB$: $0.3$--$1$; $10^{-3}$--$10^{-2}$ & $\Pit$: $10$--$10^3$; $1$--$50$ \\
+& $\Pin$: $0.1$--$10$; $0.1$--$10$ & $\PiL$: $10$--$100$; $10$--$300$ & $\Pif$: $1$--$50$; $1$--$10$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The window question has one answer in both domains: window length follows $\Pin$, resolution follows $\Pit$. Each descriptor $q$ names a governing set $G_q$; tested support $C_d(q)$ is a set of cells in $\log_{10}$ coordinates; overlap $O_q=C_{\mathrm{src}}\cap C_{\mathrm{tgt}}$ and distance $d_q(c)=\min_{c'}\max_{g\in G_q}|\log_{10}\pi_g(c)-\log_{10}\pi_g(c')|$ in decades \tagP{}. Support is the list of evaluated cells, never a bounding box \tagG{}.
+\begin{proposition}[Overlap result]
+Under the placeholders, sonar and HF are two decades apart in $M$ and $1.5$ in $\betaB$. For any descriptor with $M$ or $\betaB$ in $G_q$, $O_q=\varnothing$. \tagH{}: Doppler and scale descriptors are therefore predicted \emph{not} to transfer and serve as the negative control; what can transfer lives in $\{\Pit,\Pin,\Pif,\PiL\}$, arrival structure and waveguide interference. The shared object is the waveguide, not the Doppler.
+\end{proposition}
+Mode count: in a Pekeris waveguide $f_m=(2m-1)c/(4D\sqrt{1-(c/\cbot)^2})$, so with $\Pif=f/f_1$, $N_{\mathrm{modes}}=\lfloor(\Pif+1)/2\rfloor$. In the ionosphere a hop mode propagates only \emph{below} $f_{\mathrm{MUF}}=f_{\mathrm{crit}}\sec\varphi_0$, so a literal $f/f_{\mathrm{cut}}$ is not the same quantity; we propose each pack define $\Pif$ so that $N_{\mathrm{modes}}$ is monotone in it (Check 4).
+
+\section{Generators}
+\textbf{Sonar, image-source Pekeris} \tagP{}. Depth $D$, speed $c$, over half-space $(\cbot,\rhob)$. Image depths $z^{(n,\sigma)}=2nD+\sigma z_s$, $n\in\Z$, $\sigma=\pm1$; reflection counts $(n_s,n_b)=(|n|,|n|)$ for $\sigma=+$; $(n-1,n)$ for $\sigma=-,\,n\ge1$; $(|n|+1,|n|)$ for $\sigma=-,\,n\le0$. Per image, $R=\sqrt{r^2+(z_r-z^{(n,\sigma)})^2}$, $\tau=R/c$, $\theta=\arctan(|z_r-z^{(n,\sigma)}|/r)$ and
+\begin{equation}
+  a=\frac{(-1)^{n_s}\,R_b(\theta)^{n_b}}{R},\qquad
+  R_b(\theta)=\frac{\rhob\cbot\sin\theta-\rho c\sin\theta_b}{\rhob\cbot\sin\theta+\rho c\sin\theta_b},\quad
+  \frac{\cos\theta}{c}=\frac{\cos\theta_b}{\cbot},
+\end{equation}
+with $|R_b|=1$ and a frequency-independent phase below $\theta_c=\arccos(c/\cbot)$, applied to the analytic source: $y=\Re\sum_ka_ks_a(t-\tau_k)+n$. Exact for the ideal waveguide; with $R_b(\theta)$ it is the ray approximation to the Pekeris field, omitting head waves and near-cutoff modal corrections, and it has no refraction \citep{pekeris1948,jensen2011}. \textbf{HF, discrete-mode skywave} \tagP{}. Chapman layer $N(h)=N_m\exp\{\tfrac12[1-\zeta-\ee^{-\zeta}]\}$, $f_p\approx8.98\sqrt N$; reflection where $f\cos\varphi_0=f_p(h)$; group delay of an $n$-hop mode from the virtual height $h'(f_v)=\int_0^{h_r}\dd h/\sqrt{1-f_p^2/f_v^2}$: $\tau_n=\tfrac{2n}{c}\sqrt{(R_g/2n)^2+h'^2}$; O/X split as two reflection conditions; slow multiplicative fading per mode \citep{davies1990}. \textbf{Shared}: no code, different physics, one approximation family, discrete paths with per-path delay and gain, which is the anchor assumption; the independence statement must say so \tagG{}. \textbf{Waveguide invariant} \tagH{}: $\beta=-\Delta S_p/\Delta S_g$ with $S_p=k/\omega$, $S_g=\dd k/\dd\omega$ \citep{dspain1999}; for any two paths with delay difference $\Delta\tau(R)$, $\beta_{\mathrm{path}}=-(\dd\ln\Delta\tau/\dd\ln R)^{-1}$ reduces to it. H4 asks whether $\beta_{\mathrm{path}}$ is approximately invariant across HF hop-mode pairs and ground ranges.
+
+\section{Identifiability}
+Generative model $y_d=\mathcal M_d[\mathcal F_d(\theta_{\mathrm{sh}},\theta_{\mathrm{pr}};c_d)]+\varepsilon_d$; a change to $\mathcal M_d$ is lossy processing, to $c_d$ a physical intervention, neither a ``convention'' \tagG{}. Blind deconvolution $y=h*s$ admits $(\kappa h,s/\kappa)$, a common delay, and without structure $(h*g,\,g^{-1}*s)$; identifiability needs subspace or sparsity constraints \citep{li2017}. A learned estimator hides an ambiguity, it does not remove one, so every estimator lists \code{assumptions}, \code{identifiable}, \code{ambiguous} \tagG{}. Cepstrum: for two arrivals with $r=a_1/a_0$, $|r|<1$, $\Delta=\tau_1-\tau_0$,
+\begin{equation}
+  \log\big(1+r\ee^{-\jj2\pi f\Delta}\big)=\sum_{n\ge1}\tfrac{(-1)^{n+1}r^n}{n}\ee^{-\jj2\pi fn\Delta},
+\end{equation}
+impulses at $n\Delta$; it needs $|r|<1$ (ordering is lost in the magnitude cepstrum), $\Delta>1/B$, a smooth source spectrum, and one source, since $S_1H_1+S_2H_2$ does not factor. Artificial time reversal uses near-linear modal phase and known geometry, leaving delay and scale unknown \citep{sabra2004,sabra2010}; bilinear models for sources of opportunity use a source subspace \citep{tian2020}. Multi-view identifiability \citep{vonkugelgen2021,gresele2020} requires views whose nuisance varies \emph{independently}; a deterministic re-representation $\tilde x=\phi(x)$ is matched by $e\circ\phi^{-1}$ for any encoder $e$ and isolates nothing. Hence L2a (consistency) is separate from L2b (content isolation), and only L2b is an alignment basis.
+
+\section{Transfer as a measured quantity}
+Loss at the independent unit $u$ (scenes, sessions, instruments; never windows): $L_a(N)=\frac1{|U|}\sum_u\ell(\hat q_{a,u},q_u)$ with $\ell=|\hat\rms-\rms|B$ in resolution cells; effect $\delta(N)=L_{\mathrm{base}}(N)-L_{\mathrm{cand}}(N)$ with a bootstrap CI over units and seeds \tagG{}. H1: on $O_q$, $\delta$ exceeds a preregistered $\delta_{\min}$ with CI excluding zero at two or more budgets. H2: $\delta$ decreases with $d_q$; a gain at large $d_q$ is a finding, not a failed gate. H3: regime conditioning beats unconditioned arms under interventions separating regime from domain identity. H5: coverage survives shift or applicability flags the cells where it does not. Ladder: classical; normalized features + head; scratch; target SSL; pooled; dense shared/private; routed (optional), each compared to every arm below it \citep{chu2026,sharma2026,gulrajani2020}. $\delta_{\min}$ is set from the from-scratch arm's seed variability and frozen before the test partition is read. A crash is not negative transfer; nonsignificance is not no effect; one simulator relabelled is not two domains. Fusion, two rules: shared-root results are one piece of evidence and the wider is kept; unknown dependence withholds numerical combination.
+
+\section*{The nine checks}
+\begin{enumerate}[label=\textbf{\arabic*.},leftmargin=*,itemsep=0pt]
+\item $\Pis=TB|\alpha-1|$ as the delay--Doppler vs.\ delay--scale criterion; threshold of order $0.1$--$1$? Does delay--scale lose modal structure at your ranges?
+\item Is a local (non-WSSUS) scattering function needed as a first-class kind?
+\item \textbf{Critical.} RMS delay spread and resolvable-arrival count as the first two descriptors; if not, which functional of $P$ or $\CH$?
+\item Propagating-mode count as the common ``modes above cutoff'' coordinate across ocean and ionosphere?
+\item Does medium variability need its own coordinate? Programme ranges for the groups.
+\item \textbf{Critical.} Image-source Pekeris as the first generator, with your refraction-capable code second; $R_b(\theta)$ beyond critical as a constant phase on the analytic signal?
+\item Should $\beta_{\mathrm{path}}$ be expected to be invariant in HF multimode returns; what would you look for first?
+\item With overlapped sources, what breaks the cepstrum: delay collisions, source non-stationarity, or association? A source subspace that makes it identifiable? Below what $\Pit$ is sparsity unusable?
+\item Does the per-descriptor pilot design lose anything from the original conversation? Descriptor-matched pairing across simulators as the primary basis, or pairs from a shared physical scene?
+\end{enumerate}
+
+\vspace{-2pt}
+{\footnotesize
+\bibliographystyle{plainnat}
+\bibliography{crossfade}}
+\end{document}
