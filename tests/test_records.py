@@ -146,6 +146,16 @@ def test_w0_at25_unparseable_manifest_unit_quarantines(store, golden_ms, given, 
     rec = store.put(golden_ms, profile_manifest(**given))
     assert rec.validation_state == "quarantined"
     assert f"unparseable_units:{name}:furlongs_per_bogon" in rec.validation_notes
+    kept = store.get(rec.id)  # the record keeps the unit it was given
+    assert (kept.units | {k: c.units for k, c in kept.coords.items()})[name] == "furlongs_per_bogon"
+
+
+def test_quarantined_record_keeps_unparseable_payload_units(store):
+    ds = profile_dataset([0.0, 2.0], [1.0, 1.0], "furlongs_per_bogon")
+    ds["weight"].attrs["units"] = "furlongs_per_bogon"
+    rec = store.get(store.put(ds, profile_manifest()).id)
+    assert rec.validation_state == "quarantined"
+    assert rec.units["weight"] == rec.coords["delay"].units == "furlongs_per_bogon"
 
 
 def test_w0_at25_manifest_repeating_payload_units_is_the_same_record(store, golden_ms):
