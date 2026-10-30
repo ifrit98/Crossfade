@@ -43,8 +43,8 @@ An engineer ingests a supplied delay-power profile, computes its weighted RMS wi
 | W0-F04 | `tasks.load()` rejects unknown fields and any quantity without `canonical_kind` or `not_channel` | CF-23, CF-25 |
 | W0-F05 | `packs.registry()` imports the listed packs, checks `CORE_API_VERSION`, and fails whole on any error | ADR-09 |
 | W0-F06 | `Operation.assess` reads only `capabilities`, `validation_state`, `units`, and params; it never opens the payload | CF-04, CF-05 |
-| W0-F07 | `runs.execute()` refuses to start if `assess` is not `supported`; writes outputs, then run JSON, then row | CF-12 |
-| W0-F08 | A worker exception produces `status = failed` with `error` set and no `result`; a retry is a new run with `attempt_of` | CF-11 |
+| W0-F07 | `runs.execute()` refuses to start if `assess` is not `supported`; runs the operation in a child process under optional limits; writes outputs, then run JSON, then row | CF-12 |
+| W0-F08 | A worker exception, an expired wall-clock limit or the worker's death produces `status = failed` with `error` set and no `result`; a retry is a new run with `attempt_of` | CF-11 |
 | W0-F09 | `runs.replay()` re-executes and compares by the op's determinism contract | CF-10 |
 | W0-F10 | `Result` serialization uses the enum states; a deterministic op's uncertainty is `not_applicable` and never a number | CF-08, CF-09, CF-13 |
 | W0-F11 | `profile_fixture` returns an anchor estimate of kind `descriptors_only` with no payload | CF-07 |
@@ -52,11 +52,16 @@ An engineer ingests a supplied delay-power profile, computes its weighted RMS wi
 
 ## Implementation notes (branch `w0-workbench`)
 
-Three details were settled while implementing and are reflected in `01_contracts.md`:
+Details settled while implementing. The first two are reflected in `01_contracts.md`; the rest change no contract.
 
 - AT-04 and AT-05 value checks (unmasked nonfinite, zero total weight, negative weight) are made in `run`, not `assess`, because `assess` never opens the payload. The run succeeds with `answer = unsupported` and the reasons in `diagnostics`. The negative `reference_time` check is a parameter check and stays in `assess`.
 - `Record.id` derives from both hashes; `produced_by_run` and `validation_notes` were added. `verify()` reports `orphan_outputs` for AT-11.
-- The worker runs in-process in this draft. Subprocess isolation with a resource limit is the next increment and does not change any contract.
+- The worker is a child Python process started with `sys.executable`. It gets the parent's `sys.path` and imports the operation from its pack module by `op_id`, as `registry()` does; the operation object is never pickled. So `execute` needs the operation to be listed in an imported pack's `OPERATIONS`, and raises `RegistryError` otherwise. The parent keeps assess, parameter validation and publication, in the same order.
+- `execute(..., limits=WorkerLimits(wall_seconds, memory_bytes))`; `None` means no limit. The wall-clock limit covers the child's whole life, interpreter start and imports included; when it expires the parent kills and reaps the child. The memory limit is `RLIMIT_AS` (address space), set in the child before the pack is imported. A memory limit the platform refuses to set fails the run; the operation never runs unlimited instead.
+- Every worker failure is a failed run with `error` set and no `result`. An exception gives its type, message and traceback; an expired wall-clock limit names `wall_seconds` and its value; a child that exits without a result, or exits nonzero after writing one, names its exit code or signal. A result counts only if the child exits 0. A failure to start the worker or read its reply gives its type, message and traceback. An interrupt of the parent kills and reaps the child, then propagates with no run written, as in W0-AT-11. A `MemoryError` under a memory limit names `memory_bytes`.
+- `verify()` lists as `orphan_outputs` every record with `produced_by_run` that no run's `result.outputs` references, as "Publication order" in `01_contracts.md` says. It used to list only outputs whose run was never written, which missed the outputs of a run that failed after publishing them (W0-AT-23).
+- On macOS (Darwin 24, arm64), `setrlimit(RLIMIT_AS)` failed with `EINVAL` at 1, 8 and 64 GiB and succeeded at 512 GiB, for a Python process whose virtual size was about 392 GiB. So a memory limit fails every run there. W0-AT-24 is skipped where the limit can't be set or isn't enforced; the test of the refusal runs where it can't be set.
+- **Open: the limit values.** The spec doesn't fix them, so `execute` has no default limit. They block the CLI flags for the limits, nothing else.
 
 ## Acceptance tests
 
@@ -85,6 +90,9 @@ Pytest names follow `test_w0_atNN_<slug>`.
 | W0-AT-19 | The `profile_fixture` golden run | Inspect output record | `anchor.anchor_kind = descriptors_only`, `payload_ref` absent |
 | W0-AT-20 | Network disabled | Full demo sequence | Passes |
 | W0-AT-21 | Every registered op, every declared precondition | Conformance | `assess` refuses a record lacking that capability |
+| W0-AT-22 | A worker that never returns, `wall_seconds = 1` | Execute | Returns in under 10 s; run `failed`, `error` names the wall-clock limit; the child process is gone |
+| W0-AT-23 | A worker that publishes an output, then kills itself with SIGKILL | Execute | Run `failed`, `error` names the signal, no result; `verify` lists the orphan output |
+| W0-AT-24 | A worker that allocates past `memory_bytes` | Execute | Run `failed`; `error` names the limit or the signal. Skipped where the platform doesn't enforce the limit |
 
 ## Implementation increments
 
@@ -93,11 +101,11 @@ Each ends with a runnable test.
 1. `Record` model, hashing, `put`/`get`/`verify` on files; `db.py` with the records table. Tests W0-AT-07, 08, 09.
 2. `TaskSpec` model and loader; the two YAML files. Test W0-AT-16.
 3. `Operation` protocol, `Assessment`, registry. `profile_fixture` with `assess` only. Tests W0-AT-04, 05, 14, 15, 17, 18, 21.
-4. `Run`, `Result`, `execute`, worker subprocess, atomic publication. `profile_fixture.run`. Tests W0-AT-01, 02, 03, 06, 10, 11, 19.
+4. `Run`, `Result`, `execute`, worker subprocess, atomic publication. `profile_fixture.run`. Tests W0-AT-01, 02, 03, 06, 10, 11, 19, 22, 23, 24.
 5. `replay`. Test W0-AT-12.
 6. `summary_fixture`. Test W0-AT-13.
 7. `cli`. Test W0-AT-20 as the end-to-end demo script.
 
 ## Definition of done
 
-All 21 tests green offline. `cloc` under budget. A `README` in the repo showing the seven-command demo and stating in its first line that this is an engineering fixture, not a validated estimator. No performance claim about any domain.
+All 24 tests green offline, W0-AT-24 where the platform enforces the memory limit. `cloc` under budget. A `README` in the repo showing the seven-command demo and stating in its first line that this is an engineering fixture, not a validated estimator. No performance claim about any domain.
