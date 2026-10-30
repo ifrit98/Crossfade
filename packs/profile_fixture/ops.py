@@ -59,9 +59,8 @@ class WeightedRmsWidth:
         fc = ForwardCheck(status="not_applicable")
 
         reasons: list[str] = []
-        bad = np.where(valid & ~np.isfinite(weight))[0]
-        if bad.size:
-            reasons += [f"nonfinite:weight[{i}]" for i in bad]
+        for name, values in (("weight", weight), ("delay", delay)):
+            reasons += [f"nonfinite:{name}[{i}]" for i in np.where(valid & ~np.isfinite(values))[0]]
         if np.any(valid & (weight < 0)):
             reasons.append("negative_weight")
         if not reasons and weight[valid].sum() <= 0:

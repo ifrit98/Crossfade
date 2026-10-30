@@ -1,5 +1,5 @@
 """W0 increments 4-6: execute, replay, T0 and summary runs, the subprocess worker.
-PRD-W0 AT-01, 02, 03, 04, 05, 06, 10, 11, 12, 13, 19, 22, 23, 24.
+PRD-W0 AT-01, 02, 03, 04, 05, 06, 10, 11, 12, 13, 19, 22, 23, 24, 27.
 
 AT-04 and AT-05 value checks happen at run time (answer=unsupported), because assess never
 opens the payload (contract 01 section 3). Parameter checks (negative reference) are at assess.
@@ -185,6 +185,22 @@ def test_w0_at04_unmasked_invalid_entry_is_refused(store):
     run = execute(store, T0, T0_OP, store.put(ds, profile_manifest()), REF)
     assert run.status == "succeeded" and run.result.answer == "unsupported"
     assert any("nonfinite" in r and "2" in r for r in run.result.diagnostics["reasons"])
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf])
+def test_w0_at04_unmasked_nonfinite_delay_is_refused(store, bad):
+    ds = profile_dataset([0.0, 2.0, bad], [1.0, 1.0, 1.0], "ms")
+    run = execute(store, T0, T0_OP, store.put(ds, profile_manifest()), REF)
+    assert run.status == "succeeded" and run.result.answer == "unsupported"
+    assert run.result.diagnostics["reasons"] == ["nonfinite:delay[2]"]
+
+
+def test_w0_at04_masked_nonfinite_delay_is_excluded_and_counted(store):
+    ds = profile_dataset([0.0, 2.0, np.nan], [1.0, 1.0, 1.0], "ms", valid=[True, True, False])
+    run = execute(store, T0, T0_OP, store.put(ds, profile_manifest()), REF)
+    assert run.result.answer == "complete"
+    assert _q(run, "n_used") == 2 and _q(run, "n_excluded") == 1
+    assert _q(run, "rms_width") == pytest.approx(1.0)
 
 
 def test_w0_at05_zero_total_weight_and_negative_weight_refused(store):
@@ -412,6 +428,15 @@ def test_w0_at12_replay_reproduces_outputs(store, golden_ms):
         store.get(o).byte_hash for o in first.result.outputs
     ]
     assert again.result.quantities == first.result.quantities
+
+
+def test_w0_at27_tolerance_replay_refuses_before_executing(store, golden_ms, monkeypatch):
+    first = execute(store, T0, T0_OP, store.put(golden_ms, profile_manifest()), REF)
+    monkeypatch.setattr(T0_OP, "determinism", "tolerance")
+    with pytest.raises(NotImplementedError, match="tolerance comparison is not defined yet"):
+        replay(store, first.run_id, REG)
+    assert [p.stem for p in (store.root / "runs").glob("*.json")] == [first.run_id]
+    assert store.db.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
 
 
 def test_w0_at19_output_is_descriptors_only_anchor(store, golden_ms):

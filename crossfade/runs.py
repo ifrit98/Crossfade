@@ -295,11 +295,17 @@ def load_run(store: Store, run_id: str) -> Run:
 
 
 def replay(store: Store, run_id: str, reg: dict[str, Operation]) -> Run:
-    """Re-execute with the same inputs, params and seed; compare outputs by the op's contract."""
+    """Re-execute with the same inputs, params and seed; compare outputs by the op's contract.
+    Only exact replay is defined: an op of any other determinism is refused before it runs."""
     prior = load_run(store, run_id)
     op = reg[prior.op_id]
     if op.version != prior.op_version:
         raise ReplayMismatch(f"{prior.op_id}: version {op.version} != recorded {prior.op_version}")
+    if op.determinism != "exact":
+        raise NotImplementedError(
+            f"{prior.op_id}: determinism {op.determinism!r}: the tolerance comparison is not "
+            "defined yet (open in PRD-W0), so the run is not replayed"
+        )
     from crossfade.tasks import load as load_task  # local import keeps runs.py free of paths
 
     task = load_task(_task_path(prior.task_id, prior.task_version))
@@ -308,7 +314,7 @@ def replay(store: Store, run_id: str, reg: dict[str, Operation]) -> Run:
     if prior.status == "succeeded" and new.status == "succeeded":
         old_h = [store.get(o).byte_hash for o in prior.result.outputs]
         new_h = [store.get(o).byte_hash for o in new.result.outputs]
-        if op.determinism == "exact" and old_h != new_h:
+        if old_h != new_h:
             raise ReplayMismatch(f"{run_id}: outputs differ under exact determinism")
     return new
 
