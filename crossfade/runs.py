@@ -217,16 +217,16 @@ def _work(job: dict[str, Any], wall_seconds: float | None) -> tuple[Result | Non
             proc.kill()
             proc.wait()
     reply = Path(job["scratch"]) / "result.json"
-    if not reply.exists():
-        rc = proc.returncode
-        how = f"exit code {rc}"
-        if rc < 0:
-            how = "signal " + next((s.name for s in signal.Signals if s == -rc), str(-rc))
-        return None, f"worker exited without a result: {how}"
-    out = json.loads(reply.read_text())
+    out = json.loads(reply.read_text()) if reply.exists() else {}
     if "error" in out:
         return None, out["error"]
-    return Result.model_validate(out["result"]), None
+    rc = proc.returncode
+    if rc == 0 and "result" in out:
+        return Result.model_validate(out["result"]), None
+    how = f"exit code {rc}"
+    if rc < 0:
+        how = "signal " + next((s.name for s in signal.Signals if s == -rc), str(-rc))
+    return None, f"worker exited {'after writing its result' if out else 'without a result'}: {how}"
 
 
 def execute(

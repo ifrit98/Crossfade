@@ -37,9 +37,10 @@ MEM = 2**31  # a test value only; the limit values are open (PRD-W0)
 # A pack whose operations misbehave in the worker. The worker imports it by name, so it lives in
 # a directory on sys.path rather than in this module.
 MISBEHAVING_PACK = """
-import os, signal, time
+import atexit, os, signal, time
 from pydantic import BaseModel, ConfigDict
 from crossfade.packs import Assessment
+from crossfade.runs import Result
 
 class Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -62,6 +63,10 @@ def exits(params, ctx):
 def allocates(params, ctx):
     bytes(params.nbytes)
 
+def dies_after_replying(params, ctx):
+    atexit.register(os.kill, os.getpid(), signal.SIGKILL)  # runs after the reply is written
+    return Result(answer="partial")
+
 class Op:
     version = "0.1"
     preconditions = []
@@ -81,7 +86,9 @@ class Op:
         return self.fn(params, ctx)
 
 CORE_API_VERSION = 1
-OPERATIONS = [Op(f) for f in (raises, hangs, publishes_then_dies, exits, allocates)]
+OPERATIONS = [
+    Op(f) for f in (raises, hangs, publishes_then_dies, exits, allocates, dies_after_replying)
+]
 """
 
 
@@ -231,6 +238,27 @@ def test_worker_exit_without_result_names_exit_code(store, golden_ms, bad):
     rec = store.put(golden_ms, profile_manifest())
     run = execute(store, T0, bad["test.exits"], rec, {})
     assert run.status == "failed" and run.result is None and "exit code 3" in run.error
+
+
+def test_worker_death_after_its_reply_fails_the_run(store, golden_ms, bad):
+    rec = store.put(golden_ms, profile_manifest())
+    run = execute(store, T0, bad["test.dies_after_replying"], rec, {})
+    assert run.status == "failed" and run.result is None
+    assert "after writing its result" in run.error and "SIGKILL" in run.error
+
+
+def test_op_within_wall_clock_limit_succeeds(store, golden_ms):
+    rec = store.put(golden_ms, profile_manifest())
+    run = execute(store, T0, T0_OP, rec, REF, limits=WorkerLimits(wall_seconds=60))
+    assert run.status == "succeeded" and _q(run, "rms_width") == pytest.approx(1.0)
+
+
+@pytest.mark.skipif(RLIMIT_AS == "unsettable", reason=f"RLIMIT_AS at {MEM} bytes is {RLIMIT_AS}")
+def test_op_within_memory_limit_succeeds(store, golden_ms):
+    rec = store.put(golden_ms, profile_manifest())
+    limits = WorkerLimits(memory_bytes=8 * MEM)  # roomy: this checks a limit doesn't fail the run
+    run = execute(store, T0, T0_OP, rec, REF, limits=limits)
+    assert run.status == "succeeded" and _q(run, "rms_width") == pytest.approx(1.0)
 
 
 @pytest.mark.skipif(RLIMIT_AS != "enforced", reason=f"RLIMIT_AS at {MEM} bytes is {RLIMIT_AS}")
