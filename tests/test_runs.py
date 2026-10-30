@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from subprocess import Popen
 
 import numpy as np
 import pytest
@@ -63,6 +64,10 @@ def exits(params, ctx):
 def allocates(params, ctx):
     bytes(params.nbytes)
 
+def garbles_reply(params, ctx):
+    (ctx.scratch / "result.json").write_text("{not json")
+    os._exit(0)
+
 def dies_after_replying(params, ctx):
     atexit.register(os.kill, os.getpid(), signal.SIGKILL)  # runs after the reply is written
     return Result(answer="partial")
@@ -86,9 +91,8 @@ class Op:
         return self.fn(params, ctx)
 
 CORE_API_VERSION = 1
-OPERATIONS = [
-    Op(f) for f in (raises, hangs, publishes_then_dies, exits, allocates, dies_after_replying)
-]
+FNS = (raises, hangs, publishes_then_dies, exits, allocates, garbles_reply, dies_after_replying)
+OPERATIONS = [Op(f) for f in FNS]
 """
 
 
@@ -101,6 +105,21 @@ def bad(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
         mp.syspath_prepend(str(root))
         yield registry(root / "crossfade.toml")
+
+
+@pytest.fixture
+def workers(monkeypatch):
+    """The worker processes execute() starts; other subprocesses pass through."""
+    started, popen = [], subprocess.Popen
+
+    def spy(args, *a, **k):
+        proc = popen(args, *a, **k)
+        if args[-1:] == [runs_mod._BOOT]:
+            started.append(proc)
+        return proc
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    return started
 
 
 def _rlimit_as_probe(nbytes: int) -> str:
@@ -203,16 +222,7 @@ def test_w0_at10_worker_failure_is_persisted_without_result(store, golden_ms, ba
     assert retry.attempt_of == run.run_id and retry.run_id != run.run_id
 
 
-def test_w0_at22_wall_clock_limit_kills_hung_worker(store, golden_ms, bad, monkeypatch):
-    workers, popen = [], subprocess.Popen
-
-    def spy(args, *a, **k):  # keeps the worker's handle; other subprocesses pass through
-        proc = popen(args, *a, **k)
-        if args[-1:] == [runs_mod._BOOT]:
-            workers.append(proc)
-        return proc
-
-    monkeypatch.setattr(subprocess, "Popen", spy)
+def test_w0_at22_wall_clock_limit_kills_hung_worker(store, golden_ms, bad, workers):
     rec = store.put(golden_ms, profile_manifest())
     t0 = time.monotonic()
     run = execute(store, T0, bad["test.hangs"], rec, {}, limits=WorkerLimits(wall_seconds=1))
@@ -238,6 +248,46 @@ def test_worker_exit_without_result_names_exit_code(store, golden_ms, bad):
     rec = store.put(golden_ms, profile_manifest())
     run = execute(store, T0, bad["test.exits"], rec, {})
     assert run.status == "failed" and run.result is None and "exit code 3" in run.error
+
+
+def test_parent_interrupt_kills_and_reaps_worker_first(store, golden_ms, bad, workers, monkeypatch):
+    communicate = Popen.communicate  # the class itself; `workers` has wrapped subprocess.Popen
+
+    def interrupted(self, *a, **k):
+        if self.args[-1:] == [runs_mod._BOOT]:
+            raise KeyboardInterrupt
+        return communicate(self, *a, **k)
+
+    monkeypatch.setattr(Popen, "communicate", interrupted)
+    rec = store.put(golden_ms, profile_manifest())
+    with pytest.raises(KeyboardInterrupt):
+        execute(store, T0, bad["test.hangs"], rec, {})
+    [worker] = workers
+    assert worker.returncode is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(worker.pid, 0)
+    assert not list((store.root / "runs").glob("*.json"))
+
+
+def test_worker_that_cannot_start_is_a_failed_run(store, golden_ms, monkeypatch):
+    popen = subprocess.Popen
+
+    def refuse(args, *a, **k):
+        if args[-1:] == [runs_mod._BOOT]:
+            raise OSError(24, "Too many open files")
+        return popen(args, *a, **k)
+
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    run = execute(store, T0, T0_OP, store.put(golden_ms, profile_manifest()), REF)
+    assert run.status == "failed" and run.result is None and "Too many open files" in run.error
+    assert (store.root / "runs" / f"{run.run_id}.json").exists()
+
+
+def test_unreadable_worker_reply_is_a_failed_run(store, golden_ms, bad):
+    run = execute(
+        store, T0, bad["test.garbles_reply"], store.put(golden_ms, profile_manifest()), {}
+    )
+    assert run.status == "failed" and run.result is None and "JSONDecodeError" in run.error
 
 
 def test_worker_death_after_its_reply_fails_the_run(store, golden_ms, bad):

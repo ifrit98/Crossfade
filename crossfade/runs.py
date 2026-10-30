@@ -278,7 +278,10 @@ def execute(
         "scratch": str(scratch),
         "memory_bytes": limits.memory_bytes,
     }
-    result, error = _work(job, limits.wall_seconds)
+    try:
+        result, error = _work(job, limits.wall_seconds)
+    except Exception as e:  # noqa: BLE001 - starting the worker or reading its reply failed
+        result, error = None, f"worker transport: {type(e).__name__}: {e}\n{traceback.format_exc()}"
     if error is None:
         run = Run(**base, status="succeeded", finished_at=datetime.now(UTC), result=result)
     else:
