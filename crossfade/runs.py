@@ -3,22 +3,29 @@
 Invariants: CF-08/09 (uncertainty and forward-check are typed states, never defaulted to a pass),
 CF-10 (every run resolves to inputs, op version, code rev, env lock), CF-11 (failures persisted,
 retries linked), CF-12 (outputs published before the run that references them), CF-13 (origin).
+
+The operation runs in a child process under optional limits. Installed packs are a trust boundary,
+not a sandbox: the child limits time and memory, not what the pack may touch.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib
+import json
 import os
+import signal
 import subprocess
 import sys
 import traceback
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from crossfade.packs import Operation, RunContext, assess
+from crossfade.packs import Operation, RegistryError, RunContext, assess
 from crossfade.records import Record, Store
 from crossfade.tasks import TaskSpec
 
@@ -98,6 +105,13 @@ class Run(_Strict):
     result: Result | None = None
 
 
+class WorkerLimits(_Strict):
+    """Limits on the worker process; None means no limit. The values are open (PRD-W0)."""
+
+    wall_seconds: float | None = Field(default=None, gt=0)  # the child's whole life, imports too
+    memory_bytes: int | None = Field(default=None, gt=0)  # address space, as RLIMIT_AS
+
+
 def _code_rev() -> str:
     try:
         rev = subprocess.run(
@@ -142,6 +156,79 @@ def _persist_run(store: Store, run: Run) -> None:
     store.db.commit()
 
 
+def _pack_of(op: Operation) -> str:
+    """The imported pack module whose OPERATIONS holds this op, for the worker to import."""
+    for name, mod in list(sys.modules.items()):
+        ops = getattr(mod, "__dict__", {}).get("OPERATIONS")
+        if isinstance(ops, list | tuple) and any(o is op for o in ops):
+            return name
+    raise RegistryError(f"{op.op_id}: not listed in any imported pack's OPERATIONS")
+
+
+# The child takes the parent's sys.path first, so it imports the same code as the parent.
+_BOOT = (
+    "import json, sys; job = json.load(sys.stdin); sys.path[:] = job['sys_path']; "
+    "from crossfade.runs import _worker; _worker(job)"
+)
+
+
+def _limit_memory(nbytes: int) -> None:
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_AS, (nbytes, resource.getrlimit(resource.RLIMIT_AS)[1]))
+    except (ImportError, ValueError, OSError) as e:  # never run unlimited instead
+        raise RuntimeError(f"memory limit memory_bytes={nbytes} could not be set: {e}") from e
+
+
+def _worker(job: dict[str, Any]) -> None:
+    """Child process: apply the memory limit, import the op from its pack as registry() does,
+    run it, and write {"result": ...} or {"error": ...} to result.json in the scratch dir."""
+    scratch, mem = Path(job["scratch"]), job["memory_bytes"]
+    try:
+        if mem is not None:
+            _limit_memory(mem)
+        op = next(
+            o for o in importlib.import_module(job["pack"]).OPERATIONS if o.op_id == job["op_id"]
+        )
+        ctx = RunContext(Store(Path(job["store"])), job["seed"], scratch, job["run_id"])
+        task, record = TaskSpec.model_validate(job["task"]), Record.model_validate(job["record"])
+        result = op.run(task, record, op.params_model.model_validate(job["params"]), ctx)
+        result = Result.model_validate(result.model_dump() | {"outputs": ctx.outputs})
+        out = {"result": result.model_dump(mode="json")}
+    except Exception as e:  # noqa: BLE001 - any op failure is a failed run, persisted
+        limited = isinstance(e, MemoryError) and mem is not None
+        note = f"under memory limit memory_bytes={mem}: " if limited else ""
+        out = {"error": f"{note}{type(e).__name__}: {e}\n{traceback.format_exc()}"}
+    tmp = scratch / "result.json.tmp"
+    tmp.write_text(json.dumps(out))
+    os.replace(tmp, scratch / "result.json")
+
+
+def _work(job: dict[str, Any], wall_seconds: float | None) -> tuple[Result | None, str | None]:
+    """Run the worker in a child process. Returns (result, None) or (None, why it failed)."""
+    proc = subprocess.Popen([sys.executable, "-c", _BOOT], stdin=subprocess.PIPE)
+    try:
+        proc.communicate(json.dumps(job).encode(), timeout=wall_seconds)
+    except subprocess.TimeoutExpired:
+        return None, f"wall-clock limit wall_seconds={wall_seconds} exceeded; worker killed"
+    finally:
+        if proc.poll() is None:  # timed out, or the parent was interrupted
+            proc.kill()
+            proc.wait()
+    reply = Path(job["scratch"]) / "result.json"
+    if not reply.exists():
+        rc = proc.returncode
+        how = f"exit code {rc}"
+        if rc < 0:
+            how = "signal " + next((s.name for s in signal.Signals if s == -rc), str(-rc))
+        return None, f"worker exited without a result: {how}"
+    out = json.loads(reply.read_text())
+    if "error" in out:
+        return None, out["error"]
+    return Result.model_validate(out["result"]), None
+
+
 def execute(
     store: Store,
     task: TaskSpec,
@@ -150,16 +237,18 @@ def execute(
     params: dict[str, Any],
     seed: int | None = None,
     attempt_of: str | None = None,
+    limits: WorkerLimits | None = None,
 ) -> Run:
-    """Assess, then run in-process, then publish. A failed op is a persisted failed run."""
+    """Assess, then run the op in a child process under `limits`, then publish. Every worker
+    failure (an exception, the wall-clock limit, the child's death) is a persisted failed run."""
     a = assess(op, task, record, params)
     if a.status != "supported":
         raise NotSupported(f"{op.op_id} on {record.id}: {a.status}: {a.reasons} {a.missing}")
-    parsed = op.params_model.model_validate(params)
+    limits = limits or WorkerLimits()
+    pack = _pack_of(op)
     run_id = "run_" + uuid.uuid4().hex
     scratch = store.root / "tmp" / run_id
     scratch.mkdir(parents=True, exist_ok=True)
-    ctx = RunContext(store, seed, scratch, run_id)
     base = dict(
         run_id=run_id,
         task_id=task.task_id,
@@ -176,17 +265,24 @@ def execute(
         attempt_of=attempt_of,
         assumptions_used=[k for k, v in task.params.items() if v.is_assumption and k in params],
     )
-    try:
-        result: Result = op.run(task, record, parsed, ctx)
-        result = result.model_copy(update={"outputs": ctx.outputs})
+    job = {
+        "sys_path": sys.path,
+        "store": str(store.root),
+        "pack": pack,
+        "op_id": op.op_id,
+        "task": task.model_dump(mode="json"),
+        "record": record.model_dump(mode="json"),
+        "params": params,
+        "seed": seed,
+        "run_id": run_id,
+        "scratch": str(scratch),
+        "memory_bytes": limits.memory_bytes,
+    }
+    result, error = _work(job, limits.wall_seconds)
+    if error is None:
         run = Run(**base, status="succeeded", finished_at=datetime.now(UTC), result=result)
-    except Exception as e:  # noqa: BLE001 - any op failure is a failed run, persisted
-        run = Run(
-            **base,
-            status="failed",
-            finished_at=datetime.now(UTC),
-            error=f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
-        )
+    else:
+        run = Run(**base, status="failed", finished_at=datetime.now(UTC), error=error)
     _persist_run(store, run)
     return run
 

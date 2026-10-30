@@ -262,17 +262,20 @@ class Store:
 
     def verify(self) -> dict[str, list[str]]:
         """Recompute every hash. Report mismatches, orphan blobs (no record references them), and
-        orphan outputs (records claiming a producing run that was never published: CF-12)."""
+        orphan outputs (run outputs no published run references, as when the run was never
+        published or failed after publishing them: CF-12)."""
         referenced: set[str] = set()
         mismatches: list[str] = []
         orphan_outputs: list[str] = []
-        run_ids = {p.stem for p in (self.root / "runs").glob("*.json")}
+        run_outputs: set[str] = set()
+        for p in (self.root / "runs").glob("*.json"):
+            run_outputs.update((json.loads(p.read_text()).get("result") or {}).get("outputs", []))
         for p in (self.root / "records").glob("*.json"):
             rec = Record.model_validate_json(p.read_text())
             referenced.add(rec.payload_ref)
             if self._blob_hash(rec.payload_ref) != rec.byte_hash:
                 mismatches.append(rec.id)
-            if rec.produced_by_run and rec.produced_by_run not in run_ids:
+            if rec.produced_by_run and rec.id not in run_outputs:
                 orphan_outputs.append(rec.id)
         orphans = [
             f"blobs/{p.name}"
