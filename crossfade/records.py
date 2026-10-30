@@ -1,7 +1,7 @@
 """Record: anything observed or derived. Store: content-hashed files plus a SQLite index.
 
-Invariants enforced here: CF-01 (write-once blobs), CF-02 (identity covers bytes and manifest),
-CF-03 (validated units or quarantine), CF-25 (unknown fields rejected).
+Invariants enforced here: CF-01 (write-once blobs), CF-02 (identity covers bytes and manifest,
+rechecked on read), CF-03 (validated units or quarantine), CF-25 (unknown fields rejected).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ UREG = pint.UnitRegistry()
 
 
 class IntegrityError(RuntimeError):
-    """A stored payload no longer matches its recorded hash."""
+    """A stored payload or record no longer matches its recorded hashes or id."""
 
 
 class _Strict(BaseModel):
@@ -132,40 +132,74 @@ def _hash_tree(root: Path) -> str:
     return h.hexdigest()
 
 
-def _validate_units(ds: xr.Dataset, masks: list[str]) -> tuple[dict, dict, list[str]]:
-    """Return (units, coords, notes). Any note means quarantine."""
+def _manifest_hash(rec: Record) -> str:
+    """sha256 of the record's stored JSON less the fields identity excludes, so it can be
+    recomputed from the record alone."""
+    return _sha256(_canonical(json.loads(rec.model_dump_json(exclude=_IDENTITY_EXCLUDED))))
+
+
+def _record_id(byte_hash: str, manifest_hash: str) -> str:
+    return "rec_" + _sha256((byte_hash + manifest_hash).encode())[:16]
+
+
+def _validate_units(ds: xr.Dataset, manifest: dict[str, Any]) -> tuple[dict, dict, list[str]]:
+    """Return (units, coords, notes) as the record keeps them. Any note but nonfinite:<var> means
+    quarantine.
+
+    The kept units are the payload's `units` attributes, overlaid name by name by those the
+    manifest supplies in `units` or `coords`. Every kept unit must parse, a manifest unit must
+    equal the payload's attribute where both exist, and a payload variable without the attribute
+    is missing its units whatever the manifest says (CF-03). For a payload coordinate the
+    manifest gives only the units; dtype, length and attrs describe the payload.
+    """
+    masks = list(manifest.get("masks", []))
+    given_units = dict(manifest.get("units", {}))
+    given_coords = {k: CoordSpec.model_validate(v) for k, v in manifest.get("coords", {}).items()}
     notes: list[str] = []
     units: dict[str, str] = {}
     coords: dict[str, CoordSpec] = {}
 
-    def check(name: str, attrs: dict) -> str | None:
-        u = attrs.get("units")
-        if u is None:
-            notes.append(f"missing_units:{name}")
-            return None
+    def parse(name: str, u: str) -> None:
         try:
             UREG.parse_units(u)
         except Exception:  # pint raises several types
             notes.append(f"unparseable_units:{name}:{u}")
-            return None
-        return u
+
+    def keep(name: str, attrs: dict, given: str | None) -> str | None:
+        u = attrs.get("units")
+        if u is None:
+            notes.append(f"missing_units:{name}")
+        else:
+            parse(name, u)
+        if given is not None and given != u:
+            if u is not None:
+                notes.append(f"units_conflict:{name}")
+            parse(name, given)
+        return given if given is not None else u
 
     for name, var in ds.data_vars.items():
         if name in masks:
             continue
-        u = check(str(name), var.attrs)
+        u = keep(str(name), var.attrs, given_units.pop(str(name), None))
         if u is not None:
             units[str(name)] = u
         if np.issubdtype(var.dtype, np.number) and not np.all(np.isfinite(var.values)):
             notes.append(f"nonfinite:{name}")
     for name, c in ds.coords.items():
-        u = check(str(name), c.attrs)
+        given = given_coords.pop(str(name), None)
+        u = keep(str(name), c.attrs, given.units if given else None)
         coords[str(name)] = CoordSpec(
             units=u or "?",
             dtype=str(c.dtype),
             length=int(c.size),
             attrs={k: str(v) for k, v in c.attrs.items() if k != "units"},
         )
+    for name, u in given_units.items():  # masks, and names the payload has no variable for
+        parse(name, u)
+        units[name] = u
+    for name, spec in given_coords.items():
+        parse(name, spec.units)
+        coords[name] = spec
     return units, coords, notes
 
 
@@ -216,31 +250,32 @@ class Store:
 
     def put(self, payload: Any, manifest: dict[str, Any]) -> Record:
         manifest = dict(manifest)
-        masks = list(manifest.get("masks", []))
         notes: list[str] = []
         if isinstance(payload, xr.Dataset):
-            units, coords, notes = _validate_units(payload, masks)
-            manifest.setdefault("units", units)
-            manifest.setdefault("coords", {k: v.model_dump() for k, v in coords.items()})
+            units, coords, notes = _validate_units(payload, manifest)
+            manifest["units"] = units
+            manifest["coords"] = {k: v.model_dump() for k, v in coords.items()}
         payload_kind, byte_hash, payload_ref = self._put_blob(payload)
         fatal = [n for n in notes if not n.startswith("nonfinite:")]
         manifest["validation_state"] = "quarantined" if fatal else "eligible"
         manifest["validation_notes"] = notes
         manifest["payload_kind"] = payload_kind
-        identity = {k: v for k, v in manifest.items() if k not in _IDENTITY_EXCLUDED}
-        manifest_hash = _sha256(_canonical(identity))
         body = {
             k: v
             for k, v in manifest.items()
             if k not in {"id", "byte_hash", "manifest_hash", "ingested_at", "payload_ref"}
         }
         rec = Record(
-            id="rec_" + _sha256((byte_hash + manifest_hash).encode())[:16],
+            id="",
             byte_hash=byte_hash,
-            manifest_hash=manifest_hash,
+            manifest_hash="",
             payload_ref=payload_ref,
             ingested_at=datetime.now(UTC),
             **body,
+        )
+        manifest_hash = _manifest_hash(rec)
+        rec = rec.model_copy(
+            update={"manifest_hash": manifest_hash, "id": _record_id(byte_hash, manifest_hash)}
         )
         path = self.root / "records" / f"{rec.id}.json"
         if not path.exists():
@@ -254,16 +289,26 @@ class Store:
             self.db.commit()
         return Record.model_validate_json(path.read_text())
 
+    def _integrity(self, rec: Record, record_id: str) -> str | None:
+        """Why the record stored as `record_id` fails its hashes or id, or None (CF-01, CF-02)."""
+        if self._blob_hash(rec.payload_ref) != rec.byte_hash:
+            return "payload hash mismatch"
+        if _manifest_hash(rec) != rec.manifest_hash:
+            return "manifest hash mismatch"
+        if not rec.id == record_id == _record_id(rec.byte_hash, rec.manifest_hash):
+            return "id mismatch"
+        return None
+
     def get(self, record_id: str) -> Record:
         rec = Record.model_validate_json((self.root / "records" / f"{record_id}.json").read_text())
-        if self._blob_hash(rec.payload_ref) != rec.byte_hash:
-            raise IntegrityError(f"{record_id}: payload hash mismatch")
+        if why := self._integrity(rec, record_id):
+            raise IntegrityError(f"{record_id}: {why}")
         return rec
 
     def verify(self) -> dict[str, list[str]]:
-        """Recompute every hash. Report mismatches, orphan blobs (no record references them), and
-        orphan outputs (run outputs no published run references, as when the run was never
-        published or failed after publishing them: CF-12)."""
+        """Recompute every hash and id. Report mismatches, orphan blobs (no record references
+        them), and orphan outputs (run outputs no published run references, as when the run was
+        never published or failed after publishing them: CF-12)."""
         referenced: set[str] = set()
         mismatches: list[str] = []
         orphan_outputs: list[str] = []
@@ -273,8 +318,8 @@ class Store:
         for p in (self.root / "records").glob("*.json"):
             rec = Record.model_validate_json(p.read_text())
             referenced.add(rec.payload_ref)
-            if self._blob_hash(rec.payload_ref) != rec.byte_hash:
-                mismatches.append(rec.id)
+            if self._integrity(rec, p.stem):
+                mismatches.append(p.stem)
             if rec.produced_by_run and rec.id not in run_outputs:
                 orphan_outputs.append(rec.id)
         orphans = [
