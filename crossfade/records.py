@@ -148,7 +148,8 @@ def _validate_units(ds: xr.Dataset, manifest: dict[str, Any]) -> tuple[dict, dic
 
     The kept units are the payload's `units` attributes, overlaid name by name by those the
     manifest supplies in `units` or `coords`. Every kept unit must parse, a manifest unit must
-    equal the payload's attribute where both exist, and a payload variable without the attribute
+    equal the payload's attribute for the same name where both exist, whichever field the
+    manifest gives it in, and a payload variable without the attribute
     is missing its units whatever the manifest says (CF-03). For a payload coordinate the
     manifest gives only the units; dtype, length and attrs describe the payload.
     """
@@ -159,23 +160,34 @@ def _validate_units(ds: xr.Dataset, manifest: dict[str, Any]) -> tuple[dict, dic
     units: dict[str, str] = {}
     coords: dict[str, CoordSpec] = {}
 
+    def note(n: str) -> None:
+        if n not in notes:
+            notes.append(n)
+
     def parse(name: str, u: str) -> None:
         try:
             UREG.parse_units(u)
         except Exception:  # pint raises several types
-            notes.append(f"unparseable_units:{name}:{u}")
+            note(f"unparseable_units:{name}:{u}")
+
+    def overlay(name: str, attr: str | None, given: str) -> None:
+        """Check a manifest unit, and against the payload's attribute for the same name if any."""
+        parse(name, given)
+        if attr is not None and given != attr:
+            note(f"units_conflict:{name}")
 
     def keep(name: str, attrs: dict, given: str | None) -> str | None:
         u = attrs.get("units")
         if u is None:
-            notes.append(f"missing_units:{name}")
+            note(f"missing_units:{name}")
         else:
             parse(name, u)
-        if given is not None and given != u:
-            if u is not None:
-                notes.append(f"units_conflict:{name}")
-            parse(name, given)
+        if given is not None:
+            overlay(name, u, given)
         return given if given is not None else u
+
+    def attr(name: str) -> str | None:
+        return ds[name].attrs.get("units") if name in ds.variables else None
 
     for name, var in ds.data_vars.items():
         if name in masks:
@@ -184,7 +196,7 @@ def _validate_units(ds: xr.Dataset, manifest: dict[str, Any]) -> tuple[dict, dic
         if u is not None:
             units[str(name)] = u
         if np.issubdtype(var.dtype, np.number) and not np.all(np.isfinite(var.values)):
-            notes.append(f"nonfinite:{name}")
+            note(f"nonfinite:{name}")
     for name, c in ds.coords.items():
         given = given_coords.pop(str(name), None)
         u = keep(str(name), c.attrs, given.units if given else None)
@@ -194,11 +206,11 @@ def _validate_units(ds: xr.Dataset, manifest: dict[str, Any]) -> tuple[dict, dic
             length=int(c.size),
             attrs={k: str(v) for k, v in c.attrs.items() if k != "units"},
         )
-    for name, u in given_units.items():  # masks, and names the payload has no variable for
-        parse(name, u)
+    for name, u in given_units.items():  # masks, coordinates, and names the payload lacks
+        overlay(name, attr(name), u)
         units[name] = u
-    for name, spec in given_coords.items():
-        parse(name, spec.units)
+    for name, spec in given_coords.items():  # data variables, and names the payload lacks
+        overlay(name, attr(name), spec.units)
         coords[name] = spec
     return units, coords, notes
 

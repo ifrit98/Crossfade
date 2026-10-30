@@ -132,6 +132,8 @@ def _coord(units: str, **over) -> dict:
         ({"coords": {"delay": _coord("s")}}, "delay"),
         ({"units": {"weight": "m"}}, "weight"),
         ({"coords": {"delay": _coord("millisecond")}}, "delay"),  # units compare as strings
+        ({"units": {"delay": "s"}}, "delay"),  # a coordinate given in `units`
+        ({"coords": {"weight": _coord("m")}}, "weight"),  # a data variable given in `coords`
     ],
 )
 def test_w0_at25_manifest_unit_conflicting_with_payload_quarantines(store, golden_ms, given, name):
@@ -156,6 +158,14 @@ def test_w0_at25_unparseable_manifest_unit_quarantines(store, golden_ms, given, 
     assert f"unparseable_units:{name}:furlongs_per_bogon" in rec.validation_notes
     kept = store.get(rec.id)  # the record keeps the unit it was given
     assert (kept.units | {k: c.units for k, c in kept.coords.items()})[name] == "furlongs_per_bogon"
+
+
+@pytest.mark.parametrize("unit, state", [("1", "eligible"), ("furlongs_per_bogon", "quarantined")])
+def test_manifest_unit_for_a_mask_is_validated_and_kept(store, unit, state):
+    ds = profile_dataset([0.0, 2.0], [1.0, 1.0], "ms", valid=[True, True])
+    rec = store.get(store.put(ds, profile_manifest(units={"valid": unit})).id)
+    assert rec.validation_state == state and rec.units["valid"] == unit
+    assert (f"unparseable_units:valid:{unit}" in rec.validation_notes) == (state == "quarantined")
 
 
 def test_quarantined_record_keeps_unparseable_payload_units(store):

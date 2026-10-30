@@ -74,7 +74,7 @@ class AnchorFields(BaseModel):
 
 **Units on array records.** The units a record keeps are the payload's `units` attributes, overlaid name by name by those the manifest supplies in `units` or `coords`, and the pint check covers all of them. **[G]**
 - A manifest unit that does not parse quarantines with `unparseable_units:<name>:<unit>`.
-- A manifest unit that differs from the payload's attribute for the same variable quarantines with `units_conflict:<name>`. Units compare as strings, so `ms` against `millisecond` is a conflict. **[P]**
+- A manifest unit that differs from the payload's attribute for the same variable or coordinate, in whichever of `units` or `coords` the manifest gives it, quarantines with `units_conflict:<name>`. Units compare as strings, so `ms` against `millisecond` is a conflict. **[P]**
 - A payload variable without a `units` attribute is quarantined as `missing_units:<name>` even when the manifest supplies a unit. **[P]**
 - For a coordinate in the payload, the manifest supplies only `units`; `dtype`, `length` and `attrs` are read from the payload. So a manifest that repeats the payload's units yields the same record as one that leaves them out.
 - A quarantined record keeps the unit it was given, parseable or not; the note names it. Only an eligible record's units are all pint-parseable.
