@@ -244,6 +244,12 @@ def test_w0_at23_worker_killed_by_signal_leaves_orphan_output(store, golden_ms, 
     assert len(orphans) == 1 and store.get(orphans[0]).produced_by_run == run.run_id
 
 
+def test_outputs_of_succeeded_runs_are_not_orphans(store, golden_ms):
+    first = execute(store, T0, T0_OP, store.put(golden_ms, profile_manifest()), REF)
+    replay(store, first.run_id, REG)  # the replay reuses the output record
+    assert first.result.outputs and store.verify()["orphan_outputs"] == []
+
+
 def test_worker_exit_without_result_names_exit_code(store, golden_ms, bad):
     rec = store.put(golden_ms, profile_manifest())
     run = execute(store, T0, bad["test.exits"], rec, {})
