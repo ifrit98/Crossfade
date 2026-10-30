@@ -1,0 +1,20 @@
+schema_version: 1
+task_id: summary.compare
+version: "0.1"
+task_kind: comparison
+question: Return an upstream system's assertions as upstream-asserted quantities with their provenance intact.
+allowed_inputs:
+  - {name: assertions, availability: prediction_evidence}
+required_capabilities: [upstream_asserted]
+params: {}
+quantities:
+  assertions: {definition: each upstream assertion by name, units: as_asserted, canonical_kind: not_channel, ambiguity_allowed: true}
+truth_source: {kind: none, description: no reference truth; upstream is the source, error_model: unknown}
+normalization: {rule: none, reversible: true, fit_scope: train}
+regime_coords: []
+baselines: []
+metrics: []
+split_policy: {unit: record, held_out_groups: [], pretraining_exposure: none}
+uncertainty_requirement: {kinds_accepted: [not_applicable], may_be_unavailable: true}
+completion_rule: assertions returned with origin upstream_asserted
+promotion_rule: not applicable

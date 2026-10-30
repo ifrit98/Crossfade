@@ -1,0 +1,10 @@
+{
+  "task": "profile.weighted_rms_width",
+  "version": "0.1",
+  "input": {"delay": [0.0, 2.0], "delay_units": "ms", "weight": [1.0, 1.0],
+            "reference_time": 2.0, "reference_time_units": "ms"},
+  "expected": {"mean_delay": 1.0, "rms_width": 1.0, "normalized_width": 0.5,
+               "n_used": 2, "n_excluded": 0},
+  "expected_units": "ms",
+  "tolerance_rel": 1e-12
+}
