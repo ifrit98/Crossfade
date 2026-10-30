@@ -21,6 +21,14 @@ T0 = load(ROOT / "tasks" / "profile.weighted_rms_width.v0.1.yaml")
 T0_OP = registry(ROOT / "crossfade.toml")["profile.weighted_rms_width"]
 
 
+def test_explicit_defaults_are_the_same_record_as_omitted_ones(store, golden_ms):
+    bare = store.put(golden_ms, profile_manifest())
+    defaults = dict(schema_version=1, acquired_at=None, data_use=None, parents=[], group_ids={})
+    explicit = store.put(golden_ms, profile_manifest(**defaults, regime=None, anchor=None))
+    assert explicit.id == bare.id and explicit.manifest_hash == bare.manifest_hash
+    assert store.get(explicit.id) == bare
+
+
 def test_w0_at08_same_bytes_different_units_are_different_records(store, golden_ms):
     a = store.put(golden_ms, profile_manifest())
     b = store.put(profile_dataset([0.0, 2.0], [1.0, 1.0], "s"), profile_manifest())
