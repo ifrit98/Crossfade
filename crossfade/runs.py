@@ -272,7 +272,7 @@ def execute(
         "op_id": op.op_id,
         "task": task.model_dump(mode="json"),
         "record": record.model_dump(mode="json"),
-        "params": params,
+        "params": op.params_model.model_validate(params).model_dump(mode="json"),
         "seed": seed,
         "run_id": run_id,
         "scratch": str(scratch),

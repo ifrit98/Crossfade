@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from decimal import Decimal
 from pathlib import Path
 from subprocess import Popen
 
@@ -64,6 +65,9 @@ def exits(params, ctx):
 def allocates(params, ctx):
     bytes(params.nbytes)
 
+def returns_malformed(params, ctx):
+    return Result.model_construct(answer="bogus")  # skips validation
+
 def garbles_reply(params, ctx):
     (ctx.scratch / "result.json").write_text("{not json")
     os._exit(0)
@@ -92,7 +96,7 @@ class Op:
 
 CORE_API_VERSION = 1
 FNS = (raises, hangs, publishes_then_dies, exits, allocates, garbles_reply, dies_after_replying)
-OPERATIONS = [Op(f) for f in FNS]
+OPERATIONS = [Op(f) for f in (*FNS, returns_malformed)]
 """
 
 
@@ -248,6 +252,21 @@ def test_outputs_of_succeeded_runs_are_not_orphans(store, golden_ms):
     first = execute(store, T0, T0_OP, store.put(golden_ms, profile_manifest()), REF)
     replay(store, first.run_id, REG)  # the replay reuses the output record
     assert first.result.outputs and store.verify()["orphan_outputs"] == []
+
+
+def test_params_valid_in_python_but_not_json_reach_the_worker(store, golden_ms):
+    params = {"reference_time": Decimal("2"), "reference_time_units": "ms"}
+    run = execute(store, T0, T0_OP, store.put(golden_ms, profile_manifest()), params)
+    assert run.status == "succeeded", run.error
+    assert _q(run, "normalized_width") == pytest.approx(0.5)
+
+
+def test_malformed_result_is_a_failed_run(store, golden_ms, bad):
+    run = execute(
+        store, T0, bad["test.returns_malformed"], store.put(golden_ms, profile_manifest()), {}
+    )
+    assert run.status == "failed" and run.result is None
+    assert "ValidationError" in run.error and "answer" in run.error
 
 
 def test_worker_exit_without_result_names_exit_code(store, golden_ms, bad):
