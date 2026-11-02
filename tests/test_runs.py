@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from subprocess import Popen
@@ -39,14 +40,21 @@ MEM = 2**31  # a test value only; the limit values are open (PRD-W0)
 # A pack whose operations misbehave in the worker. The worker imports it by name, so it lives in
 # a directory on sys.path rather than in this module.
 MISBEHAVING_PACK = """
-import atexit, os, signal, time
-from pydantic import BaseModel, ConfigDict
+import atexit, datetime, os, signal, time
+from pydantic import BaseModel, ConfigDict, Field, Json
 from crossfade.packs import Assessment
 from crossfade.runs import Result
 
 class Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
     nbytes: int = 0
+
+class TypedParams(BaseModel):  # types whose plain JSON dump doesn't validate back
+    model_config = ConfigDict(extra="forbid", strict=True)
+    day: datetime.date = datetime.date(2026, 1, 1)
+    pair: tuple[int, int] = (0, 0)
+    blob: Json[list[int]] = "[]"
+    width: float = Field(default=0.0, alias="Width")
 
 def raises(params, ctx):
     raise RuntimeError("worker exploded")
@@ -72,6 +80,9 @@ def garbles_reply(params, ctx):
     (ctx.scratch / "result.json").write_text("{not json")
     os._exit(0)
 
+def echoes(params, ctx):
+    return Result(answer="partial", diagnostics={"seed": ctx.seed, "params": repr(params)})
+
 def dies_after_replying(params, ctx):
     atexit.register(os.kill, os.getpid(), signal.SIGKILL)  # runs after the reply is written
     return Result(answer="partial")
@@ -85,8 +96,8 @@ class Op:
     tolerance = None
     is_model = False
 
-    def __init__(self, fn):
-        self.op_id, self.fn = f"test.{fn.__name__}", fn
+    def __init__(self, fn, params_model=Params):
+        self.op_id, self.fn, self.params_model = f"test.{fn.__name__}", fn, params_model
 
     def assess(self, task, record, params):
         return Assessment(status="supported")
@@ -96,7 +107,7 @@ class Op:
 
 CORE_API_VERSION = 1
 FNS = (raises, hangs, publishes_then_dies, exits, allocates, garbles_reply, dies_after_replying)
-OPERATIONS = [Op(f) for f in (*FNS, returns_malformed)]
+OPERATIONS = [Op(f) for f in (*FNS, returns_malformed)] + [Op(echoes, TypedParams)]
 """
 
 
@@ -261,6 +272,25 @@ def test_params_valid_in_python_but_not_json_reach_the_worker(store, golden_ms):
     assert _q(run, "normalized_width") == pytest.approx(0.5)
 
 
+def test_params_reach_the_worker_as_the_op_validated_them(store, golden_ms, bad):
+    """Strict types, a Json field and an alias, none of which survive a plain JSON dump."""
+    op = bad["test.echoes"]
+    params = {"day": date(2026, 11, 2), "pair": (1, 2), "blob": "[1, 2]", "Width": 3.5}
+    run = execute(store, T0, op, store.put(golden_ms, profile_manifest()), params)
+    assert run.status == "succeeded", run.error
+    assert run.result.diagnostics["params"] == repr(op.params_model.model_validate(params))
+
+
+def test_seed_reaches_the_worker_on_execute_and_replay(store, golden_ms, bad):
+    rec = store.put(golden_ms, profile_manifest())
+    params = {"Width": 1.0}
+    first = execute(store, T0, bad["test.echoes"], rec, params, seed=7)
+    assert first.result.diagnostics["seed"] == 7
+    again = replay(store, first.run_id, bad)
+    assert again.seed == 7 and again.status == "succeeded", again.error
+    assert again.result.diagnostics["seed"] == 7
+
+
 def test_malformed_result_is_a_failed_run(store, golden_ms, bad):
     run = execute(
         store, T0, bad["test.returns_malformed"], store.put(golden_ms, profile_manifest()), {}
@@ -357,7 +387,7 @@ def test_memory_error_under_a_memory_limit_names_the_limit(store, golden_ms, bad
         "op_id": "test.allocates",
         "task": T0.model_dump(mode="json"),
         "record": rec.model_dump(mode="json"),
-        "params": {"nbytes": 2**62},  # no allocator grants this, limit or not
+        "params": json.dumps({"nbytes": 2**62}),  # no allocator grants this, limit or not
         "seed": None,
         "run_id": "run_inprocess",
         "scratch": str(scratch),

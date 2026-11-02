@@ -193,7 +193,8 @@ def _worker(job: dict[str, Any]) -> None:
         )
         ctx = RunContext(Store(Path(job["store"])), job["seed"], scratch, job["run_id"])
         task, record = TaskSpec.model_validate(job["task"]), Record.model_validate(job["record"])
-        result = op.run(task, record, op.params_model.model_validate(job["params"]), ctx)
+        params = op.params_model.model_validate_json(job["params"], by_name=True)
+        result = op.run(task, record, params, ctx)
         result = Result.model_validate(result.model_dump() | {"outputs": ctx.outputs})
         out = {"result": result.model_dump(mode="json")}
     except Exception as e:  # noqa: BLE001 - any op failure is a failed run, persisted
@@ -272,7 +273,11 @@ def execute(
         "op_id": op.op_id,
         "task": task.model_dump(mode="json"),
         "record": record.model_dump(mode="json"),
-        "params": op.params_model.model_validate(params).model_dump(mode="json"),
+        # pydantic's JSON round trip of what the caller set (by field name, Json fields kept as
+        # JSON strings); defaults come from the child's own model, as they did in the parent
+        "params": op.params_model.model_validate(params).model_dump_json(
+            round_trip=True, exclude_unset=True
+        ),
         "seed": seed,
         "run_id": run_id,
         "scratch": str(scratch),
