@@ -3,7 +3,7 @@ name = "crossfade"
 version = "0.0.1"
 description = "Capability-aware evidence and experiment platform for wave-propagation inference"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2", "numpy", "xarray", "zarr", "pint", "pyyaml"]
+dependencies = ["pydantic>=2.11", "numpy", "xarray", "zarr", "pint", "pyyaml"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
