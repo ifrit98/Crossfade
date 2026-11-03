@@ -1,0 +1,32 @@
+schema_version: 1
+task_id: profile.weighted_rms_width
+version: "0.1"
+task_kind: transform
+question: Weighted mean delay, RMS width about it, and width normalized by a supplied reference time, for a point-weight delay profile.
+
+allowed_inputs:
+  - {name: delay, availability: prediction_evidence}
+  - {name: weight, availability: prediction_evidence}
+  - {name: valid, availability: prediction_evidence}
+required_capabilities: []
+params:
+  reference_time: {type: float, units: time, required: false, is_assumption: false, description: positive reference time for normalized width}
+  reference_time_units: {type: str, required: false, is_assumption: false, description: pint unit of reference_time}
+
+quantities:
+  mean_delay: {definition: weighted mean of delay under point weights, units: delay_units, canonical_kind: power_statistic, ambiguity_allowed: false}
+  rms_width: {definition: sqrt of weighted variance of delay about the mean, units: delay_units, canonical_kind: power_statistic, ambiguity_allowed: false}
+  normalized_width: {definition: rms_width divided by reference_time, units: "1", canonical_kind: power_statistic, ambiguity_allowed: false}
+  n_used: {definition: included samples, units: "1", canonical_kind: not_channel, ambiguity_allowed: false}
+  n_excluded: {definition: masked-out samples, units: "1", canonical_kind: not_channel, ambiguity_allowed: false}
+
+truth_source: {kind: exact, description: fixture reference answers stored independently, error_model: none}
+normalization: {rule: none, reversible: true, fit_scope: train}
+regime_coords: []
+baselines: []
+metrics:
+  - {name: abs_error, direction: lower, units: delay_units, independent_unit: record}
+split_policy: {unit: record, held_out_groups: [], pretraining_exposure: none}
+uncertainty_requirement: {kinds_accepted: [not_applicable], may_be_unavailable: false}
+completion_rule: golden fixture reproduced within tolerance
+promotion_rule: not applicable

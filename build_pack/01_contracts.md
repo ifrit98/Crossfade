@@ -11,12 +11,12 @@ Anything observed or derived. Observation, representation, anchor estimate and s
 ```python
 class Record(BaseModel):
     schema_version: int = 1
-    id: str                              # "rec_" + manifest_hash[:16]
+    id: str                              # "rec_" + sha256(byte_hash + manifest_hash)[:16]
     kind: Literal["observation", "representation", "anchor_estimate", "summary"]
     payload_kind: Literal["array", "structured"]
     payload_ref: str                     # "blobs/<byte_hash>"
     byte_hash: str                       # sha256 of payload bytes (zarr: sorted chunk hashes; JSON: canonical bytes)
-    manifest_hash: str                   # sha256 of canonical JSON of every field except id, byte_hash, manifest_hash, ingested_at
+    manifest_hash: str                   # sha256 of the canonical stored JSON of every field except id, byte_hash, manifest_hash, ingested_at, payload_ref, produced_by_run
 
     source_system: str
     acquired_at: datetime | None         # None is allowed and means unknown; never inferred
@@ -33,7 +33,9 @@ class Record(BaseModel):
 
     processing_history: list[ProcessingStep]   # {op_id, op_version, params, transform_class}
     parents: list[str]                   # record ids; derivation only, never a dependence model
+    produced_by_run: str | None          # provenance; excluded from identity so a replay's output reuses the record
     validation_state: Literal["eligible", "quarantined"]
+    validation_notes: list[str]          # why quarantined, plus advisory notes such as nonfinite:<var>
 
     regime: dict[str, RegimeCoord] | None       # name -> {value, units, provenance, availability, uncertainty}
     anchor: AnchorFields | None          # required when kind == "anchor_estimate"
@@ -64,9 +66,20 @@ class AnchorFields(BaseModel):
     uncertainty_ref: str | None          # run id whose Result.uncertainty applies
 ```
 
-**Identity.** `id` derives from `manifest_hash`. Two records with identical `byte_hash` and different `units` have different ids. Correcting metadata creates a new record with `parents=[old_id]`; the old record is untouched.
+**Identity.** `id` derives from `byte_hash` and `manifest_hash` together (W0 implementation note: deriving it from the manifest alone would collide for two payloads with one manifest). Two records with identical `byte_hash` and different `units` have different ids. `produced_by_run` is provenance, not identity, so a replay that reproduces identical bytes and manifest reuses the existing record. Correcting metadata creates a new record with `parents=[old_id]`; the old record is untouched.
+
+**Integrity.** `manifest_hash` is computed from the stored record's own JSON, so it can be recomputed from the record alone. `payload_ref` is excluded because it derives from `byte_hash`. `get()` and `verify()` recompute `byte_hash`, `manifest_hash` and `id`, and check `id` against the name the record is stored under. On any mismatch `get()` raises an integrity error and `verify()` lists the record in `mismatches`, so an edit to a stored record's units, capabilities or history is caught like an edit to its payload. **[G]**
 
 **Quarantine.** `put()` runs pint over every entry in `units` and every `CoordSpec.units`. Any failure, or any array without `units` for a data variable, sets `validation_state="quarantined"`. A quarantined record is stored, listable, and refused by every `assess` with reason `quarantined:<detail>`.
+
+**Units on array records.** The units a record keeps are the payload's `units` attributes, overlaid name by name by those the manifest supplies in `units` or `coords`, and the pint check covers all of them. **[G]**
+- A manifest unit that does not parse quarantines with `unparseable_units:<name>:<unit>`.
+- A manifest unit that differs from the payload's attribute for the same variable or coordinate, in whichever of `units` or `coords` the manifest gives it, quarantines with `units_conflict:<name>`. Units compare as strings, so `ms` against `millisecond` is a conflict. **[P]**
+- A payload variable without a `units` attribute is quarantined as `missing_units:<name>` even when the manifest supplies a unit. **[P]**
+- For a coordinate in the payload, the manifest supplies only `units`; `dtype`, `length` and `attrs` are read from the payload. So a manifest that repeats the payload's units yields the same record as one that leaves them out.
+- A quarantined record keeps the unit it was given, parseable or not; the note names it. Only an eligible record's units are all pint-parseable.
+
+Structured records are not covered; CF-03 is about arrays.
 
 ---
 
@@ -136,7 +149,7 @@ class Operation(Protocol):
     def run(self, task: TaskSpec, record: Record, params: BaseModel, ctx: RunContext) -> Result: ...
 ```
 
-`assess` MUST be pure and fast: it reads the record's `capabilities`, `validation_state`, `units` and the supplied params, and returns. It never opens the payload. `run` receives a `RunContext` with the store, the seed, and a scratch directory; it returns a `Result` and may write output records through `ctx.put()`.
+`assess` MUST be pure and fast: it reads the record's `capabilities`, `validation_state`, `units`, `coords`, `processing_history`, `validation_notes` and the supplied params, and returns. It never opens the payload. Consequently value-level checks (a nonfinite unmasked sample, zero total weight, a negative weight) happen in `run` and produce `answer = unsupported` with reasons in `diagnostics`; the run itself `succeeded`. `run` receives a `RunContext` with the store, the seed, and a scratch directory; it returns a `Result` and may write output records through `ctx.put()`.
 
 **Registry.** `packs.registry()` reads `crossfade.toml`, imports each listed module, checks `CORE_API_VERSION == 1`, and returns `dict[op_id, Operation]`. An import failure or version mismatch fails registry construction with the module named; there is no partial registry.
 
@@ -181,7 +194,9 @@ class Result(BaseModel):
 
 **Publication order.** `execute()` writes output records first, then the run JSON, then the SQLite row, each via temp file and atomic rename. A crash between steps leaves output blobs without a run that references them, which `verify` reports as orphans; it never leaves a run that references missing outputs.
 
-**Replay.** `replay(run_id)` loads the run, re-resolves the op by `op_id` and `op_version`, re-executes with the same inputs, params and seed, and compares: exact byte equality when `determinism == "exact"`, else within `tolerance`. It records a new run with `attempt_of = run_id` and `path` unchanged.
+**Replay.** `replay(run_id)` loads the run, re-resolves the op by `op_id` and `op_version`, re-executes with the same inputs, params and seed, and compares output bytes for equality when `determinism == "exact"`. It records a new run with `attempt_of = run_id` and `path` unchanged. Replay of an op whose `determinism` is anything else raises before executing and writes no run.
+
+**Open: the tolerance comparison.** Which values replay compares for a `tolerance` op (output payloads or result quantities), and whether `tolerance` is absolute or relative. It blocks replay of the first op declaring `determinism = "tolerance"`; none exists in W0.
 
 ---
 

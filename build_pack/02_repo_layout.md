@@ -58,7 +58,7 @@ crossfade/
 
 | Package | Role | Tag |
 |---|---|---|
-| `pydantic>=2` | All record types | [P] |
+| `pydantic>=2.11` | All record types; the worker validates params with `by_name` (added in 2.11) | [P] |
 | `numpy`, `scipy` | Estimators, simulators | [P] |
 | `xarray`, `zarr` | Labeled arrays and their storage | [P] |
 | `pint` | Unit validation at ingest | [P] |
